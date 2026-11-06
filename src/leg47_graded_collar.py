@@ -183,7 +183,9 @@ def run_graded_collar_comparison(cfg, run_dir=None, device=None, max_steps=None)
     metrics_u = realised_metrics(ru)
     cells_u = metrics_u['cells']
     shape_u = metrics_u['shape']
-    launch_u = prepare_aperture_modal_launch(pu, sc_u['section'], mode_index=0, num_modes=2)
+    modes_u = [prepare_aperture_modal_launch(pu, sc_u['section'], mode_index=i, num_modes=2) for i in range(2)]
+    scores_u = [float(np.sum(abs(m.mode.fields[..., 1])**2) / np.sum(abs(m.mode.fields[..., [1, 2]])**2)) for m in modes_u]
+    launch_u = modes_u[int(np.argmax(scores_u))]
     width_u = torch.tensor(cfg['width_um'], dtype=torch.float64, device=dev)
     with torch.no_grad():
         eps_u = sc_u['epsilon'](width_u).to(dev)
@@ -194,7 +196,9 @@ def run_graded_collar_comparison(cfg, run_dir=None, device=None, max_steps=None)
         R_u = float((amps_u['near']['backward'] / amps_u['near']['forward']).abs().square().sum())
 
     # Simulate graded scene unconditionally
-    launch_g = prepare_aperture_modal_launch(pg, sc_g['section'], mode_index=0, num_modes=2, allow_graded=True)
+    modes_g = [prepare_aperture_modal_launch(pg, sc_g['section'], mode_index=i, num_modes=2, allow_graded=True) for i in range(2)]
+    scores_g = [float(np.sum(abs(m.mode.fields[..., 1])**2) / np.sum(abs(m.mode.fields[..., [1, 2]])**2)) for m in modes_g]
+    launch_g = modes_g[int(np.argmax(scores_g))]
     width_g = torch.tensor(cfg['width_um'], dtype=torch.float64, device=dev)
     with torch.no_grad():
         eps_g = sc_g['epsilon'](width_g).to(dev)

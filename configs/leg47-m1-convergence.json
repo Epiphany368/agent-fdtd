@@ -39,6 +39,7 @@
   "policy": "leg47-m1-convergence-v1",
   "mode": "forward",
   "convergence_ladder": true,
+  "decay_floor": 1e-5,
   "tags": [
     "monotonic_mesh_convergence"
   ],

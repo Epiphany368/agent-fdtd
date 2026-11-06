@@ -138,8 +138,28 @@ def _detect_4surface_box(config: dict, readout: dict, telemetry_monitors: dict) 
     box_bottom_keys = {'box-bottom', 'box_bottom', 'bottom'}
 
     mons = set(telemetry_monitors.keys())
-    return bool(mons & box_right_keys) and bool(mons & box_left_keys) and \
-           bool(mons & box_top_keys) and bool(mons & box_bottom_keys)
+    has_4_names = (
+        bool(mons & box_right_keys) and bool(mons & box_left_keys) and
+        bool(mons & box_top_keys) and bool(mons & box_bottom_keys)
+    )
+    if not has_4_names:
+        return False
+
+    # ModeInjectedPlaneSimulation emits raw unnormalized DFT fluxes (~1e-41 in reduced units)
+    # for monitors named box-right/box-left/top/bottom. Only auto-trigger V2-box when fluxes
+    # are normalized (order 1) or when poynting_box was explicitly requested above.
+    raw_vals = []
+    for k in (box_right_keys | box_left_keys | box_top_keys | box_bottom_keys) & mons:
+        v = telemetry_monitors[k]
+        f = v.get('flux') if isinstance(v, dict) else v
+        norm = _normalize_flux_value(f)
+        if isinstance(norm, float):
+            raw_vals.append(abs(norm))
+        elif isinstance(norm, list) and norm:
+            raw_vals.append(max(abs(x) for x in norm))
+    if raw_vals and sum(raw_vals) < 1e-20:
+        return False
+    return True
 
 
 def _extract_box_surface_flux(telemetry_monitors: dict, readout_fluxes: dict, candidate_names: list):

@@ -150,17 +150,21 @@ def standard_readout(report, stages=None, sources=None):
         ))
 
     total_steps = sum(c.get('steps', 0) for c in cases)
+    last_steps = cases[-1].get('steps', 0) if cases else 0
     readout = {
         'policy': report.get('policy', 'leg47-m1-convergence-v1'),
         'status': report.get('status', 'completed'),
         'convergence_ladder': True,
-        'executed_steps': total_steps,
+        'executed_steps': last_steps,
+        'total_ladder_steps': total_steps,
         'tags': ['monotonic_mesh_convergence'],
         'mesh_ladder': cases,
         'observables': report.get('observables', {}),
         'cases': cases,
         'fixture': 'N8 tooth ladder with decoupled scaled smoothing (s = 1.0)'
     }
+    if 'monitors' in report and isinstance(report['monitors'], dict):
+        readout['monitors'] = report['monitors']
     if stages:
         readout['stages'] = list(stages)
     if sources:
@@ -231,6 +235,12 @@ def run_m1_convergence(cfg, run_dir=None, device=None):
 
             model = ModeInjectedPlaneSimulation(project, launch)
             planes = model(epsilon, [C0 / (cfg['wavelength_um'] * 1e-6)])
+            last_monitors = {}
+            for m_id, plane in planes.items():
+                f_t = plane.flux().detach().cpu()
+                f_val = float(f_t.item()) if f_t.numel() == 1 else [float(x) for x in f_t.numpy().flatten()]
+                last_monitors[m_id] = {'flux': f_val}
+            report['monitors'] = last_monitors
             amps = {key: modal_plane_amplitudes(planes[key], launch)
                     for key in ('near', 'far', 'outside')}
             t_val = float((amps['far']['forward'] / amps['near']['forward']).abs().square().sum())
