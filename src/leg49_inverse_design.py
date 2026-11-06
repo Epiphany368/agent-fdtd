@@ -14,6 +14,7 @@ Orchestrates:
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import math
 import os
@@ -203,6 +204,8 @@ class GratingInverseDesignLoop:
         c1: float = 1e-4,
     ) -> dict[str, Any]:
         """Execute optimizer step with genuine Armijo backtracking line search and state rollback."""
+        # Keep the optimizer's moments/step counter consistent with a rejected step.
+        optimizer_state_before = copy.deepcopy(self.optimizer.state_dict())
         # Take the optimizer's proposed step from rho_curr
         self.optimizer.step()
         with torch.no_grad():
@@ -216,6 +219,9 @@ class GratingInverseDesignLoop:
 
         # Fallback to projected gradient ascent direction if momentum opposes ascent
         if dir_deriv <= 0.0:
+            # This update is a projected-gradient fallback, not the Adam/SGD
+            # proposal. Discard the unused proposal's optimizer state.
+            self.optimizer.load_state_dict(optimizer_state_before)
             with torch.no_grad():
                 rho_prop = (rho_curr + self.learning_rate * grad_penalized_ascent).clamp(
                     0.0, 1.0
@@ -229,9 +235,7 @@ class GratingInverseDesignLoop:
         accepted_scale = 0.0
         armijo_ok = False
         sufficient_ok = False
-        best_alpha = 0.0
         best_cand = rho_curr.clone()
-        best_obj = curr_obj
         trials = 0
 
         for alpha in scales:
@@ -241,11 +245,6 @@ class GratingInverseDesignLoop:
             cand_eval = self._evaluate_forward_only(rho_cand, beta=beta)
             cand_obj = cand_eval["objective_value"]
             cand_pen = cand_eval["penalized_objective"]
-
-            if cand_obj > best_obj:
-                best_obj = cand_obj
-                best_alpha = alpha
-                best_cand = rho_cand.clone()
 
             armijo_cond = cand_pen >= (curr_pen_obj + c1 * alpha * max(dir_deriv, 0.0))
             obj_improved = cand_obj > curr_obj
@@ -257,14 +256,12 @@ class GratingInverseDesignLoop:
                 best_cand = rho_cand.clone()
                 break
 
-        if not armijo_ok and best_obj > curr_obj:
-            accepted_scale = best_alpha
-            armijo_ok = True
-            sufficient_ok = True
-        elif not armijo_ok:
-            # Genuine parameter rollback to rho_curr when no step improves the objective
+        if not armijo_ok:
+            # Improving the *unpenalized* objective does not satisfy Armijo.
+            # No accepted step => restore both parameters and optimizer state.
             accepted_scale = 0.0
             best_cand = rho_curr.clone()
+            self.optimizer.load_state_dict(optimizer_state_before)
 
         with torch.no_grad():
             self.rho.copy_(best_cand)
