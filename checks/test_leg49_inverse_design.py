@@ -639,5 +639,76 @@ class Leg49PostNotaryIntegrationTests(unittest.TestCase):
             shutil.rmtree(temp_dir, ignore_errors=True)
 
 
+
+
+class Leg49ArmijoFailClosedTests(unittest.TestCase):
+    """A raw objective gain must not be certified as an Armijo step."""
+
+    def _loop(self, objective_gain: float, penalized_gain: float):
+        # Exercise only the line-search contract, with no FDTD or GPU dependency.
+        loop = GratingInverseDesignLoop.__new__(GratingInverseDesignLoop)
+        loop.rho = torch.nn.Parameter(torch.tensor([0.5], dtype=torch.float64))
+        loop.learning_rate = 0.1
+        loop.optimizer = torch.optim.Adam([loop.rho], lr=loop.learning_rate)
+
+        def evaluate(rho_input, beta):
+            distance = float((rho_input.detach() - 0.5).item())
+            return {
+                "objective_value": 0.5 + objective_gain * distance,
+                "penalized_objective": 0.5 + penalized_gain * distance,
+            }
+
+        loop._evaluate_forward_only = evaluate
+        return loop
+
+    def _step(self, loop):
+        # Objective ascent means the optimizer minimizes its negation.
+        loop.rho.grad = torch.tensor([-1.0], dtype=torch.float64)
+        return loop._armijo_line_search_update(
+            rho_curr=loop.rho.detach().clone(),
+            grad_penalized_ascent=torch.tensor([1.0], dtype=torch.float64),
+            curr_obj=0.5,
+            curr_pen_obj=0.5,
+            curr_realized_obj=0.5,
+            beta=1.0,
+        )
+
+    def test_raw_gain_without_armijo_rolls_back_parameters_and_adam_state(self):
+        loop = self._loop(objective_gain=1.0, penalized_gain=1e-8)
+        self.assertEqual(len(loop.optimizer.state), 0)
+        result = self._step(loop)
+        self.assertGreater(result["backtrack_trials"], 0)
+        self.assertFalse(result["armijo_satisfied"])
+        self.assertFalse(result["sufficient_decrease"])
+        self.assertEqual(result["alpha_scale"], 0.0)
+        self.assertEqual(result["step_size"], 0.0)
+        self.assertAlmostEqual(float(loop.rho.item()), 0.5, places=14)
+        self.assertEqual(len(loop.optimizer.state), 0)
+
+    def test_true_armijo_step_is_accepted(self):
+        loop = self._loop(objective_gain=1.0, penalized_gain=1.0)
+        result = self._step(loop)
+        self.assertTrue(result["armijo_satisfied"])
+        self.assertTrue(result["sufficient_decrease"])
+        self.assertGreater(result["alpha_scale"], 0.0)
+        self.assertGreater(float(loop.rho.item()), 0.5)
+        self.assertGreater(len(loop.optimizer.state), 0)
+
+    def test_non_ascent_adam_proposal_uses_gradient_fallback_without_stale_moments(self):
+        loop = self._loop(objective_gain=1.0, penalized_gain=1.0)
+        # Adam proposes a negative update, opposite the supplied ascent direction.
+        loop.rho.grad = torch.tensor([1.0], dtype=torch.float64)
+        result = loop._armijo_line_search_update(
+            rho_curr=loop.rho.detach().clone(),
+            grad_penalized_ascent=torch.tensor([1.0], dtype=torch.float64),
+            curr_obj=0.5,
+            curr_pen_obj=0.5,
+            curr_realized_obj=0.5,
+            beta=1.0,
+        )
+        self.assertTrue(result["armijo_satisfied"])
+        self.assertGreater(float(loop.rho.item()), 0.5)
+        self.assertEqual(len(loop.optimizer.state), 0)
+
 if __name__ == "__main__":
     unittest.main()
