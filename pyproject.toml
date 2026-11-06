@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "torchfdtd-platform-mcp"
-version = "0.1.0"
-description = "MCP server for the torchfdtd-platform: the model proposes, the harness disposes"
+name = "agent-fdtd"
+version = "1.0.0"
+description = "AgentFDTD (v1.0.0): Zero-trust machine-verified FDTD simulation and inverse-design platform with MCP server"
 readme = "mcp_server/README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -20,6 +20,7 @@ dependencies = [
 mcp = ["mcp>=1.0,<2"]
 
 [project.scripts]
+agent-fdtd-mcp = "mcp_server.cli:main"
 torchfdtd-platform-mcp = "mcp_server.cli:main"
 
 [tool.setuptools]

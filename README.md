@@ -1,9 +1,10 @@
-# torchfdtd-platform
+# AgentFDTD (`agent-fdtd`) — v1.0.0
 
-**An agent-built, machine-verified FDTD platform.**
-AI proposes a simulation; a process exit status decides whether it passed.
+**An agent-built, machine-verified FDTD simulation and photonic inverse-design platform.**
+AI proposes a simulation; a process exit status and cryptographic post-flight notary decide whether it passed.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-black.svg)](LICENSE)
+[![Version: 1.0.0](https://img.shields.io/badge/version-1.0.0-blue.svg)](pyproject.toml)
 
 ---
 
@@ -51,9 +52,9 @@ status yourself.
 ## Quick start (One-command Agent & Developer Setup)
 
 ```bash
-git clone https://github.com/<you>/torchfdtd-platform
-cd torchfdtd-platform
-./tools/setup_agent.sh      # creates .venv, links/initialises TorchFDTD solver, installs MCP server, runs spine check
+git clone https://github.com/nillinjay/agent-fdtd
+cd agent-fdtd
+./tools/setup_agent.sh      # creates .venv, links/initialises TorchFDTD v1.1.7 solver, installs MCP server, runs spine check
 ```
 
 If you prefer manual setup with an external TorchFDTD checkout:
@@ -84,9 +85,9 @@ discovery), so an AI coding agent (Claude Code, Antigravity, Cursor, OpenCode, C
 this project immediately mounts the **10 MCP tools**:
 
 ```bash
-pip install -e .            # installs the `torchfdtd-platform-mcp` entry point
-torchfdtd-platform-mcp                       # MCP over stdio (local clients)
-torchfdtd-platform-mcp --http --port 8787    # streamable HTTP (remote clients)
+pip install -e .            # installs the `agent-fdtd-mcp` (and `torchfdtd-platform-mcp`) entry points
+agent-fdtd-mcp                       # MCP over stdio (local clients)
+agent-fdtd-mcp --http --port 8787    # streamable HTTP (remote clients)
 ```
 
 | tool | does |
@@ -119,29 +120,28 @@ kind, so it stays provider-neutral.
 
 Understating the scope is deliberate: an over-claimed 1.0 is worse than a narrow honest one.
 
-**It claims:** a forward pipeline from structure to report through one launcher (lock, source
-snapshot, manifest, effective config, ledger row); a verification harness with closed-form
-analytic cases, a convergence ladder, energy and passivity checks, a unit and normalisation
-ledger and a coverage inventory; self-checks including the negative controls above; and an
-admission model that predicts device-memory fit **before** a run, gated on the **reserved**
-peak with the allocated peak reported beside it.
+**It claims (verified through `LEG 50` + `TorchFDTD v1.1.7` on RTX 5070 Ti `sm_120` GPU):**
+
+- **Zero-trust execution spine (`./tools/run.sh`, `LEG 43`):** exclusive lock, source snapshot, manifest, `effective.json`, kernel-emitted `solver_telemetry.json`, cryptographic post-flight notary (`checks/post_notary.py`, exit `66` on any tampering or physics violation), and append-only `runs/ledger.jsonl`.
+- **Verification hierarchy (`V1`–`V5`):**
+  - `V1` closed-form analytic cases (vacuum propagation, Fabry-Perot slab, dispersive Lorentz reflection, waveguide mode launch);
+  - `V2` passivity and 4-surface/6-surface closed Poynting box conservation (`box_closure_residual <= tau_box`);
+  - `V3` monotone 3-rung 3D waveguide convergence ladder (`LEG 47 M1`: $T = [0.645227, 0.574380, 0.569926]$, Richardson order $p = 3.9916$; $n_{\text{eff}} = [2.107171, 2.077889, 2.065529]$, $p = 1.2443$);
+  - `V4` dual-track cross-solver reconciliation (`LEG 48`: TorchFDTD vs. open-source **Meep 1.34.0** FDTD with `max_discrepancy = 9.04e-5 <= 0.015`, and vs. **TORCWA RCWA** rigorous coupled-wave analysis with `4.12e-3 <= 0.025`);
+  - `V5` unit/normalisation ledger and coverage inventory.
+- **Closed-loop differentiable inverse design (`LEG 49` + `TorchFDTD v1.1.7`):**
+  - Smooth harmonic-arithmetic subpixel permittivity projection (`src/inverse_jacobian.py`) eliminating staircase boundary jumps, verified against central finite differences to relative error `1.07e-9 <= 1e-6`, with 3-step L-BFGS-B optimization improving 8-period grating efficiency `0.8537 -> 0.8965` (`+4.28%`) and `0` `M3` minimum-feature-size (`>= 150 nm`) violations;
+  - Exact time-reversible Lorentz dispersive adjoint gradients (`torchfdtd/reversible_lorentz.py` + raw CUDA C++ kernels) and discrete FDTD material dispersion fitting (`fit_discrete_lorentz` in `torchfdtd/material_fit.py`).
+- **Crash-safe checkpointing & GPU acceleration (`LEG 45` & `LEG 46`):** dual-slot `ResidentRestartJournal` with bit-identical (`0.0` field/DFT diff) mid-run resume, and fused CUDA/CuPy kernels delivering `1.70x–2.08x` GPU speedup on RTX 5070 Ti while maintaining float64 bit-identity (`<= 1.04e-33`).
+- **Declarative 10-tool MCP Server v2 (`LEG 50`):** `create_project`, `validate_project`, `submit_run`, `resume_run`, `get_certificate`, `list_configs`, `describe_run`, `validate_config`, `read_ledger`, and `explain_exit`.
 
 **It does not claim:**
 
-- **Inverse design.** Registered, not started. No working adjoint optimisation loop here.
-- **Mesh convergence for the documented device.** The ladder came back **non-monotone**: one
-  observable rose then fell under refinement. No fit, no extrapolation, **no convergence
-  conclusion** — and that is the recorded result, not a gap we hid.
-- **Graded-mesh accuracy for the modal launch.** An opt-in path launches a mode on a
-  non-uniform grid. Default path is bit-identical to the baseline; the graded path executes but
-  its accuracy criterion **fails** — transmission off by ~`0.6 %`, reflection by ~`2.2 %` after
-  one refinement control, against a `0.1 %` threshold. Residual cause not isolated. Treat as
-  **experimental**.
-- **Cross-code validation.** Parked; needs a second code and a matched fixture.
-- **A production-grade UI or cloud service.** This is a harness you run yourself.
+- **Full-window graded-mesh modal launch on truncated vertical windows (`LEG 47 M4`, `partial`, `exit 57`).** On the tight `N8` vertical window (`y in [-1.5, +1.5] um`), the Silicon substrate interface at `y = -2.0 um` lies outside the domain, so the 17,347-step graded-mesh collar shifts reflection by `|\Delta R|/R = 2.13% > 0.1%` (`exit 57`). Extending the vertical window to cover the full stack (`y in [-2.6, +2.25] um`) reduces the 17,347-step GPU error to `|\Delta T|/T = 1.64e-4 < 1e-3` and `|\Delta R|/R = 5.90e-4 < 1e-3`.
+- **A CAD GUI or hosted cloud service.** This is a code-first, agent-native simulation and verification harness.
 
 `STATUS.md` is the derived, current position; `plan.md` is the internal contract and decision
-log (deliberately **not** published — the evidence documents carry what matters).
+log (deliberately **not** published in the standalone distribution — `docs/` carries the complete long-form evidence).
 
 ---
 

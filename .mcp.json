@@ -1,10 +1,10 @@
 {
   "mcpServers": {
-    "torchfdtd-platform": {
+    "agent-fdtd": {
       "command": "bash",
       "args": [
         "-c",
-        "if [ -x .venv/bin/torchfdtd-platform-mcp ]; then exec .venv/bin/torchfdtd-platform-mcp; elif [ -x .venv/bin/python ]; then exec .venv/bin/python -m mcp_server; else exec python3 -m mcp_server; fi"
+        "if [ -x .venv/bin/agent-fdtd-mcp ]; then exec .venv/bin/agent-fdtd-mcp; elif [ -x .venv/bin/torchfdtd-platform-mcp ]; then exec .venv/bin/torchfdtd-platform-mcp; elif [ -x .venv/bin/python ]; then exec .venv/bin/python -m mcp_server; else exec python3 -m mcp_server; fi"
       ]
     }
   }

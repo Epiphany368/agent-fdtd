@@ -1,11 +1,11 @@
 ---
-name: torchfdtd-platform
-description: Machine-verified electromagnetic FDTD simulation, inverse design, and post-flight notary platform built on TorchFDTD. Use this skill when modeling 2D/3D optical structures, running forward or adjoint FDTD simulations, resuming checkpoints, or verifying energy conservation and cross-solver parity via MCP tools or CLI.
+name: agent-fdtd
+description: AgentFDTD (v1.0.0) — Machine-verified electromagnetic FDTD simulation, photonic inverse design, and post-flight notary platform built on TorchFDTD v1.1.7. Use this skill when modeling 2D/3D optical structures, running forward or adjoint FDTD simulations, resuming checkpoints, or verifying energy conservation and cross-solver parity via MCP tools or CLI.
 ---
 
-# TorchFDTD Platform — Agent Skill Guide
+# AgentFDTD (`agent-fdtd` v1.0.0) — Agent Skill Guide
 
-This repository provides a **zero-trust, machine-verified FDTD photonic simulation and inverse-design platform** driven via an MCP (Model Context Protocol) server (`torchfdtd-platform-mcp`) or the single-entry launcher (`./tools/run.sh`).
+This repository provides a **zero-trust, machine-verified FDTD photonic simulation and inverse-design platform** driven via an MCP (Model Context Protocol) server (`agent-fdtd-mcp` / `torchfdtd-platform-mcp`) or the single-entry launcher (`./tools/run.sh`).
 
 ## 1. One-Command Agent Bootstrap
 
