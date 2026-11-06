@@ -14,8 +14,8 @@
 |---|---|
 | 前向流程与无损加速：跑一次仿真并出报告，支持逐位等价断点续跑与 $1.66\times \sim 1.74\times$ 真实内核加速 | **做完了（LEGs 45–46）** |
 | 零信任验证与公证框架：内核级不可伪造遥测（`solver_telemetry.json`）+ 强制后置公证器（`checks/post_notary.py`）+ Meep/RCWA 跨求解器对齐 | **做完了（LEGs 42–44, 47–48）** |
-| 逆向设计闭环（Track I）：离散 Yee 网格解析伴随雅可比 + 三级制造约束（$M_3 \ge 150\text{ nm}$）+ 步进后置公证 | **做完了（LEG 49）** |
-| 面向 Agent 的声明式平台（MCP Server v2）：声明式建模、前置校验、断点续跑与公证书查询 10 工具全闭环 | **做完了（LEG 50）** |
+| 逆向设计闭环（Track I）：端到端 FDTD 伴随方向导数检验 + 离散制造投影结构 FDTD 复核（$M_3 \ge 150\text{ nm}$）+ 步进后置公证 | **做完了（LEG 49, v1.0.1 强化）** |
+| 面向 Agent 的声明式平台（MCP Server v2）：声明式建模、前置校验、断点检查与续跑、公证书查询 11 工具全闭环 | **做完了（LEG 50）** |
 
 ### 2026-11-05 新增九条腿（LEGs 42–50，按“做完一步验收完提交git”逐条合入 `main`）
 
@@ -25,10 +25,10 @@
 | **43** | Wave A | 求解器内核直写不可伪造遥测 `solver_telemetry.json` + 启动器强制后置公证器 `checks/post_notary.py`（篡改 `readout.json` 必报 Exit 66） | **439 项测试全绿** · Solver `59dba0b` / Platform `58058a6` |
 | **44** | Wave A | 光栅四面闭合 Poynting 包围盒守恒（`V2-box`）与时域谱收敛能量衰减律（`V2-decay`，$\le 10^{-6}$）公证落地 | **453 项测试全绿** · Commit `80f7a95` |
 | **45** | Wave B | `ResidentRestartJournal` 双槽原子检查点与 `--resume` 断点续跑：与连续运行实现 **`0.0` IEEE 754 逐位场等价**，篡改 $\varepsilon$ 或 $dt$ 必报 Exit 65 | **478 项测试全绿** · Solver `b755fc5` / Platform `db765ba` |
-| **46** | Wave B | 内核级无损加速：预分配环形监视器缓冲 + `Block-Fused` 模态注入（微基准 $2.41\times$，`0.0` 逐位误差）+ 受公证保护的 `Verified Auto-Shutoff`（端到端提速 **$1.66\times \sim 1.74\times$**，$|\Delta T| \le 10^{-6}$） | **加速与逐位等价全过** · Solver `91e59f6` / Platform `14c61a2` |
-| **47** | Wave C | 攻克 `M1` 齿宽非单调异象（解耦物理光滑长度后单调收敛阶数 $p \ge 2.86, d_2 \le 0.5 d_1$）与 `M4` 分级网格模态注入均匀颈圈（省去 **$55.85\%$** 网格单元，误差 $3.76\times 10^{-5} < 10^{-3}$） | **57 项物理测试全绿** · Commit `9bf3634` |
-| **48** | Wave C | `V4` 跨求解器自动对账：12,000 步真实麦克斯韦时域步进 + 空间傅里叶级次分解，与 **Meep 1.34.0**（误差 $9.04\times 10^{-5}$）及 **TORCWA RCWA**（误差 $4.12\times 10^{-3}$）严格对齐（$\le 1.5\%$） | **76 项测试全绿** · Commit `8445c83` |
-| **49** | Wave D | Track `I` 逆向设计闭环：解析伴随梯度（Taylor 有限差分误差 $1.27\times 10^{-9} \le 10^{-6}$）+ 三级 `M3` 制造约束（最小齿宽 $300\text{ nm}$ / 槽宽 $150\text{ nm}$，0 违规）+ 每步 `I-notary` 公证（耦合效率 $0.8537 \to 0.8965$） | **91 项测试全绿** · Commit `698a691` |
+| **46** | Wave B | 内核级无损加速：预分配环形监视器缓冲 + `Block-Fused` 模态注入（`0.0` 逐位误差）+ 受公证保护的 `Verified Auto-Shutoff`（RTX 5070 Ti GPU 实测提速 **$1.70\times \sim 2.08\times$**，$|\Delta T| = 8.10\times 10^{-34}$） | **GPU 加速与逐位等价全过** · Solver `91e59f6` / Platform `14c61a2` |
+| **47** | Wave C | `M1` 齿宽三阶单调收敛在 RTX 5070 Ti GPU 跑满 60,687 步完全通过（`20261106T120250Z-268`, $p = 3.9916, d_2 \le 0.5 d_1$, `exit=0`）；`M4` 渐变网格在 GPU 跑满 17,347 步查明物理根因：包覆全光学堆叠（含高折射率硅衬底 $y \in [-2.6, -2.0]\,\mu\text{m}$）时 $|\Delta T|/T = 1.64\times 10^{-4} < 10^{-3}$，而紧凑 N8 框内强砍 $55.85\%$ 网格会粗化光栅齿致误差 $11.98\%$（如实记为 **`M4 partial`, `exit=57`**，见 `20261106T114723Z-360`） | **`M1 accepted` (`exit=0`) / `M4 partial` (`exit=57`)** |
+| **48** | Wave C | `V4` 跨求解器自动对账：RTX 5070 Ti GPU 12,000 步全时域步进（`20261106T114358Z-371`），与 **Meep 1.34.0**（误差 $9.04\times 10^{-5}$）及 **TORCWA RCWA**（误差 $4.12\times 10^{-3}$）严格对齐（$\le 1.5\%$） | **GPU 复核全绿 (`exit=0`)** · Commit `8445c83` |
+| **49** | Wave D | Track `I` 逆向设计闭环（v1.0.1 强化）：RTX 5070 Ti GPU 端到端 FDTD 伴随梯度有限差分验证（$\le 2.38\times 10^{-8} \le 10^{-6}$）+ 真实 Armijo 回溯线搜索 + 离散 `M3` 制造投影结构独立 FDTD 重算（连续结构 $0.853694 \to 0.896521$，制造投影离散结构 $0.701854 \to 0.733507$，0 违规） | **GPU 复核全绿 (`exit=0`)** · v1.0.1 |
 | **50** | Wave D | MCP Server v2 声明式 Agent 工具集（`create_project`、`validate_project`、`submit_run`、`inspect_breakpoint`、`resume_run`、`get_certificate`），真实内核步进 + 断点续跑误差 $< 10^{-12}$ + 21 类路径穿越防御 | **56 项测试全绿** · Commit `532ef84` |
 
 ---

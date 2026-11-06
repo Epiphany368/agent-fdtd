@@ -1,6 +1,6 @@
-# torchfdtd-platform-mcp
+# torchfdtd-platform-mcp (`agent-fdtd-mcp` v1.0.1)
 
-An MCP server for the **torchfdtd-platform**. It exposes ten tools over stdio
+An MCP server for **AgentFDTD** (`torchfdtd-platform`). It exposes **11 tools** over stdio
 (local clients, auto-configured via `.mcp.json`) and streamable HTTP (remote clients):
 
 | tool | returns |
@@ -9,7 +9,8 @@ An MCP server for the **torchfdtd-platform**. It exposes ten tools over stdio
 | `validate_project(...)` | multi-tier pre-flight check (`dt_fs`, total Yee cells, memory admission, Poynting box closure, Pydantic schema) |
 | `submit_run(config, dry_run=True)` | the exact command and pre-flight verdict, or the run's `{ok, exit_status, run_id, ledger_row, stderr_tail}` |
 | `resume_run(run_id, dry_run=True)` | bit-identically resumes a checkpointed run from its dual-slot `ResidentRestartJournal` |
-| `get_certificate(run_id)` | verifies and returns the post-flight notary certificate (`verification_certificate.json`) |
+| `inspect_breakpoint(run_id)` | inspects checkpoint journal, completed/total steps, dual ping-pong slot health (`slot_a`, `slot_b`), and lock status |
+| `get_certificate(run_id)` | verifies and returns the post-flight notary certificate (`verification_certificate.json`) with SHA-256 telemetry/readout cross-check |
 | `list_configs()` | config/driver pairs recorded in `runs/ledger.jsonl`, with a one-line purpose |
 | `describe_run(config)` | driver, solver role, and the criteria quoted from the leg's `plan.md` / `docs/leg-criteria.json` |
 | `validate_config(config)` | `{ok, errors[]}` from the project's own `checks/pre_environment.py` gate |

@@ -1,10 +1,10 @@
-# AgentFDTD (`agent-fdtd`) — v1.0.0
+# AgentFDTD (`agent-fdtd`) — v1.0.1
 
 **An agent-built, machine-verified FDTD simulation and photonic inverse-design platform.**
-AI proposes a simulation; a process exit status and cryptographic post-flight notary decide whether it passed.
+AI proposes a simulation; a process exit status and deterministic post-flight notary decide whether it passed.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-black.svg)](LICENSE)
-[![Version: 1.0.0](https://img.shields.io/badge/version-1.0.0-blue.svg)](pyproject.toml)
+[![Version: 1.0.1](https://img.shields.io/badge/version-1.0.1-blue.svg)](pyproject.toml)
 
 ---
 
@@ -82,7 +82,7 @@ Run something, and read the exit status — not the log:
 
 The repository ships a root `SKILL.md` (Agent Skill manifest) and `.mcp.json` (zero-config MCP
 discovery), so an AI coding agent (Claude Code, Antigravity, Cursor, OpenCode, Codex) that clones
-this project immediately mounts the **10 MCP tools**:
+this project immediately mounts the **11 MCP tools**:
 
 ```bash
 pip install -e .            # installs the `agent-fdtd-mcp` (and `torchfdtd-platform-mcp`) entry points
@@ -96,7 +96,8 @@ agent-fdtd-mcp --http --port 8787    # streamable HTTP (remote clients)
 | `validate_project(...)` | multi-tier pre-flight validation (`dt_fs`, total Yee cells, memory admission, Poynting box closure) |
 | `submit_run(config, dry_run=True)` | `dry_run` returns the exact command and pre-flight verdict; otherwise runs it and returns **`{ok, exit_status, run_id, kind}`** |
 | `resume_run(run_id, dry_run=True)` | bit-identically resumes a checkpointed run from its dual-slot `ResidentRestartJournal` |
-| `get_certificate(run_id)` | verifies and returns the cryptographic post-flight notary certificate (`verification_certificate.json`) |
+| `inspect_breakpoint(run_id)` | inspects checkpoint journal, completed/total steps, dual ping-pong slot integrity (`slot_a`, `slot_b`), and lock status |
+| `get_certificate(run_id)` | verifies and returns the post-flight notary certificate (`verification_certificate.json`) with SHA-256 telemetry/readout cross-check |
 | `list_configs()` | what can be run, one line each |
 | `describe_run(config)` | the driver, the solver role, and the leg's pre-declared criteria |
 | `validate_config(config)` | the project's own validators → `{ok, errors[]}`; runs nothing |
@@ -116,13 +117,13 @@ kind, so it stays provider-neutral.
 
 ---
 
-## What 1.0 claims, and what it does not
+## What 1.0.1 claims, and what it does not
 
-Understating the scope is deliberate: an over-claimed 1.0 is worse than a narrow honest one.
+Understating the scope is deliberate: an over-claimed release is worse than a narrow honest one.
 
 **It claims (verified through `LEG 50` + `TorchFDTD v1.1.7` on RTX 5070 Ti `sm_120` GPU):**
 
-- **Zero-trust execution spine (`./tools/run.sh`, `LEG 43`):** exclusive lock, source snapshot, manifest, `effective.json`, kernel-emitted `solver_telemetry.json`, cryptographic post-flight notary (`checks/post_notary.py`, exit `66` on any tampering or physics violation), and append-only `runs/ledger.jsonl`.
+- **Zero-trust execution spine (`./tools/run.sh`, `LEG 43`):** exclusive lock, source snapshot, manifest, `effective.json`, kernel-emitted `solver_telemetry.json`, deterministic post-flight integrity & physics notary (`checks/post_notary.py`, SHA-256 telemetry-readout cross-check and optional HMAC-SHA256 signing, exit `66` on any tampering or physics violation), and append-only `runs/ledger.jsonl`.
 - **Verification hierarchy (`V1`–`V5`):**
   - `V1` closed-form analytic cases (vacuum propagation, Fabry-Perot slab, dispersive Lorentz reflection, waveguide mode launch);
   - `V2` passivity and 4-surface/6-surface closed Poynting box conservation (`box_closure_residual <= tau_box`);
@@ -130,14 +131,17 @@ Understating the scope is deliberate: an over-claimed 1.0 is worse than a narrow
   - `V4` dual-track cross-solver reconciliation (`LEG 48`: TorchFDTD vs. open-source **Meep 1.34.0** FDTD with `max_discrepancy = 9.04e-5 <= 0.015`, and vs. **TORCWA RCWA** rigorous coupled-wave analysis with `4.12e-3 <= 0.025`);
   - `V5` unit/normalisation ledger and coverage inventory.
 - **Closed-loop differentiable inverse design (`LEG 49` + `TorchFDTD v1.1.7`):**
-  - Smooth harmonic-arithmetic subpixel permittivity projection (`src/inverse_jacobian.py`) eliminating staircase boundary jumps, verified against central finite differences to relative error `1.07e-9 <= 1e-6`, with 3-step L-BFGS-B optimization improving 8-period grating efficiency `0.8537 -> 0.8965` (`+4.28%`) and `0` `M3` minimum-feature-size (`>= 150 nm`) violations;
+  - 3-tier `M3` conic spatial filtering, smooth $\tanh$ continuation projection, and discrete morphological opening/closing (`src/leg49_m3_constraints.py`, `src/leg49_inverse_design.py`) with projected Adam + genuine Armijo backtracking line search;
+  - End-to-end FDTD objective directional Taylor finite-difference verification (`|dJ_FDTD/d(rho) * v - FD| <= 1e-6`, measured `4.23e-9`) alongside analytic filter-projection Jacobian verification (`1.07e-9 <= 1e-6`);
+  - Independent FDTD re-simulation of both the continuous projected structure (`0.8537 -> 0.8965`, `+0.0428`) and the realized discrete `M3`-projected binary grating (`0.7019 -> 0.7335`, `+0.0317`, `0` violations at `>= 150 nm`);
   - Exact time-reversible Lorentz dispersive adjoint gradients (`torchfdtd/reversible_lorentz.py` + raw CUDA C++ kernels) and discrete FDTD material dispersion fitting (`fit_discrete_lorentz` in `torchfdtd/material_fit.py`).
 - **Crash-safe checkpointing & GPU acceleration (`LEG 45` & `LEG 46`):** dual-slot `ResidentRestartJournal` with bit-identical (`0.0` field/DFT diff) mid-run resume, and fused CUDA/CuPy kernels delivering `1.70x–2.08x` GPU speedup on RTX 5070 Ti while maintaining float64 bit-identity (`<= 1.04e-33`).
-- **Declarative 10-tool MCP Server v2 (`LEG 50`):** `create_project`, `validate_project`, `submit_run`, `resume_run`, `get_certificate`, `list_configs`, `describe_run`, `validate_config`, `read_ledger`, and `explain_exit`.
+- **Declarative 11-tool MCP Server v2 (`LEG 50`):** `create_project`, `validate_project`, `submit_run`, `resume_run`, `inspect_breakpoint`, `get_certificate`, `list_configs`, `describe_run`, `validate_config`, `read_ledger`, and `explain_exit`.
 
 **It does not claim:**
 
 - **Full-window graded-mesh modal launch on truncated vertical windows (`LEG 47 M4`, `partial`, `exit 57`).** On the tight `N8` vertical window (`y in [-1.5, +1.5] um`), the Silicon substrate interface at `y = -2.0 um` lies outside the domain, so the 17,347-step graded-mesh collar shifts reflection by `|\Delta R|/R = 2.13% > 0.1%` (`exit 57`). Extending the vertical window to cover the full stack (`y in [-2.6, +2.25] um`) reduces the 17,347-step GPU error to `|\Delta T|/T = 1.64e-4 < 1e-3` and `|\Delta R|/R = 5.90e-4 < 1e-3`.
+- **Hardware-isolated cryptographic non-repudiation against a privileged local writer.** `checks/post_notary.py` cross-checks kernel telemetry against driver readouts via SHA-256 digests (and optional `TORCHFDTD_NOTARY_SECRET` HMAC-SHA256) to catch driver hallucination, metric spoofing, or single-file tampering; full isolation against a process with write access to the run directory requires an external control plane (e.g. Helix) holding a separate signing key.
 - **A CAD GUI or hosted cloud service.** This is a code-first, agent-native simulation and verification harness.
 
 `STATUS.md` is the derived, current position; `plan.md` is the internal contract and decision

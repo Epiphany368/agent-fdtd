@@ -205,15 +205,25 @@ class Leg49InverseDesignPositiveControl(unittest.TestCase):
 
             # Assertions on optimization progress
             self.assertEqual(inv_results["iterations_completed"], 3)
-            self.assertGreaterEqual(
+            self.assertGreater(
                 inv_results["objective_gain"],
                 0.0,
-                "Optimization must yield non-negative objective gain",
+                "Optimization must yield strictly positive objective gain",
+            )
+            self.assertGreaterEqual(
+                inv_results["realized_objective_gain"],
+                0.0,
+                "Realized M3 discrete structure must yield non-negative objective gain",
             )
             self.assertLessEqual(
                 inv_results["jacobian_relative_error"],
                 1e-06,
-                "All steps must have Jacobian error <= 1e-6",
+                "All steps must have combined Jacobian/FDTD gradient error <= 1e-6",
+            )
+            self.assertLessEqual(
+                inv_results["fdtd_gradient_relative_error"],
+                1e-06,
+                "All steps must have end-to-end FDTD directional derivative error <= 1e-6",
             )
 
             # Assert that the solver kernel wrote authentic solver_telemetry.json
@@ -266,9 +276,14 @@ class Leg49InverseDesignPositiveControl(unittest.TestCase):
             self.assertTrue(cert["verified"])
             self.assertIn("verified:inverse_design_step", cert["tags"])
             self.assertIn("verified:analytic_jacobian", cert["tags"])
+            self.assertIn("verified:full_fdtd_gradient", cert["tags"])
             self.assertIn("verified:m3_fabrication_compliant", cert["tags"])
+            self.assertIn("verified:m3_realized_fdtd", cert["tags"])
             self.assertTrue(cert["inverse_design"]["m3_compliant"])
+            self.assertTrue(cert["inverse_design"]["m3_realized_fdtd_verified"])
+            self.assertTrue(cert["inverse_design"]["full_fdtd_gradient_verified"])
             self.assertTrue(cert["inverse_design"]["all_steps_passive"])
+            self.assertIn("certificate_payload_sha256", cert)
         finally:
             os.environ.pop("RUN_DIR_ABS", None)
             shutil.rmtree(temp_dir, ignore_errors=True)
@@ -459,6 +474,50 @@ class Leg49NegativeControls(unittest.TestCase):
             rdo["inverse_design"]["final_objective"] = 0.35
             rdo["inverse_design"]["objective_gain"] = -0.05
             rdo["inverse_design"]["steps"][1]["objective_value"] = 0.35
+
+            (temp_dir / "config.input.json").write_text(json.dumps(cfg), encoding="utf-8")
+            (temp_dir / "readout.json").write_text(json.dumps(rdo), encoding="utf-8")
+            (temp_dir / "solver_telemetry.json").write_text(json.dumps(tel), encoding="utf-8")
+
+            proc = self._run_post_notary_cli(temp_dir)
+            self.assertEqual(proc.returncode, 66, f"Expected exit 66, got {proc.returncode}: {proc.stderr}")
+            cert = json.loads((temp_dir / "verification_certificate.json").read_text(encoding="utf-8"))
+            self.assertFalse(cert["verified"])
+            self.assertEqual(cert["status"], "non_monotonic_objective")
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_nc6_report_only_final_objective_substitution_exits_66(self) -> None:
+        """NC6: Spoofing final_objective above terminal step[1].objective_value triggers tamper_detected and exit 66."""
+        temp_dir = Path(tempfile.mkdtemp(prefix="nc6_spoof_final_"))
+        try:
+            cfg, rdo, tel = self._setup_base_run(temp_dir)
+            # Terminal step actually regressed to 0.35, but summary claims 0.45 (historical best substitution)
+            rdo["inverse_design"]["steps"][1]["objective_value"] = 0.35
+            rdo["inverse_design"]["final_objective"] = 0.45
+            rdo["inverse_design"]["objective_gain"] = 0.05
+
+            (temp_dir / "config.input.json").write_text(json.dumps(cfg), encoding="utf-8")
+            (temp_dir / "readout.json").write_text(json.dumps(rdo), encoding="utf-8")
+            (temp_dir / "solver_telemetry.json").write_text(json.dumps(tel), encoding="utf-8")
+
+            proc = self._run_post_notary_cli(temp_dir)
+            self.assertEqual(proc.returncode, 66, f"Expected exit 66, got {proc.returncode}: {proc.stderr}")
+            cert = json.loads((temp_dir / "verification_certificate.json").read_text(encoding="utf-8"))
+            self.assertFalse(cert["verified"])
+            self.assertEqual(cert["status"], "tamper_detected")
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_nc7_realized_m3_objective_regression_exits_66(self) -> None:
+        """NC7: Regression in realized M3 discrete FDTD objective triggers non_monotonic_objective and exit 66."""
+        temp_dir = Path(tempfile.mkdtemp(prefix="nc7_real_reg_"))
+        try:
+            cfg, rdo, tel = self._setup_base_run(temp_dir)
+            rdo["inverse_design"]["steps"][0]["m3_fabrication"]["realized_objective_value"] = 0.42
+            rdo["inverse_design"]["steps"][1]["m3_fabrication"]["realized_objective_value"] = 0.36
+            rdo["inverse_design"]["initial_realized_objective"] = 0.42
+            rdo["inverse_design"]["final_realized_objective"] = 0.36
 
             (temp_dir / "config.input.json").write_text(json.dumps(cfg), encoding="utf-8")
             (temp_dir / "readout.json").write_text(json.dumps(rdo), encoding="utf-8")

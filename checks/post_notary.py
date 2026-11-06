@@ -1,8 +1,9 @@
-"""Post-flight notary gate enforcing kernel telemetry consistency, passivity, and cross-solver reconciliation (LEG 43 - 48).
+"""Post-flight notary gate enforcing kernel telemetry consistency, passivity, and cross-solver reconciliation (LEG 43 - 49).
 
 Zero-Trust Rule: Agents possess propose rights, never dispose rights. A simulation's
-credibility, completion, and merge eligibility are verified by unforgeable kernel telemetry
-(solver_telemetry.json) compared against driver readout (readout.json) and config.
+credibility, completion, and merge eligibility are verified by deterministic cross-auditing
+of kernel telemetry (solver_telemetry.json) against driver readout (readout.json) and config,
+with SHA-256 content digests (and optional HMAC-SHA256 signing when TORCHFDTD_NOTARY_SECRET is set).
 
 Exit codes:
 - 0: Verification succeeded, verification_certificate.json issued.
@@ -10,6 +11,7 @@ Exit codes:
 """
 import datetime
 import hashlib
+import hmac
 import json
 import math
 import os
@@ -334,35 +336,61 @@ def verify_post_flight(run_dir: Path) -> dict:
     box_closure_passed = None
     box_monitors_record = None
 
+    is_6surface_box = False
     if is_box_equipped and is_lossless:
         right_candidates = ['box-right', 'box_right', 'transmission', 'trans', 'far', 'T', 'right']
         left_candidates = ['box-left', 'box_left', 'reflection', 'refl', 'near', 'R', 'left']
         top_candidates = ['box-top', 'box_top', 'top', 'up', 'cladding']
         bottom_candidates = ['box-bottom', 'box_bottom', 'bottom', 'down', 'substrate']
+        front_candidates = ['box-front', 'box_front', 'front']
+        back_candidates = ['box-back', 'box_back', 'back']
 
         flux_right, name_r = _extract_box_surface_flux(telemetry_monitors, readout_fluxes, right_candidates)
         flux_left, name_l = _extract_box_surface_flux(telemetry_monitors, readout_fluxes, left_candidates)
         flux_top, name_t = _extract_box_surface_flux(telemetry_monitors, readout_fluxes, top_candidates)
         flux_bottom, name_b = _extract_box_surface_flux(telemetry_monitors, readout_fluxes, bottom_candidates)
+        flux_front, name_f = _extract_box_surface_flux(telemetry_monitors, readout_fluxes, front_candidates)
+        flux_back, name_bk = _extract_box_surface_flux(telemetry_monitors, readout_fluxes, back_candidates)
+
+        proj_region = config.get('project', {}).get('region', {}) if isinstance(config.get('project'), dict) else {}
+        proj_mons = config.get('project', {}).get('monitors', []) if isinstance(config.get('project'), dict) else []
+        proj_mon_names = {m.get('name') or m.get('id') for m in proj_mons if isinstance(m, dict)}
+        is_6surface_box = (
+            config.get('box_surfaces') == 6 or
+            readout.get('box_surfaces') == 6 or
+            str(config.get('dimension', '')).lower() == '3d' or
+            str(readout.get('dimension', '')).lower() == '3d' or
+            (str(proj_region.get('dimension', '')).lower() == '3d' and bool(proj_mon_names & {'box-right', 'box_right'})) or
+            flux_front is not None or
+            flux_back is not None or
+            bool(proj_mon_names & {'box-front', 'box_front', 'box-back', 'box_back'})
+        )
 
         missing_surfaces = []
         if flux_right is None: missing_surfaces.append('right/transmission')
         if flux_left is None: missing_surfaces.append('left/reflection')
         if flux_top is None: missing_surfaces.append('top/cladding')
         if flux_bottom is None: missing_surfaces.append('bottom/substrate')
+        if is_6surface_box:
+            if flux_front is None: missing_surfaces.append('front')
+            if flux_back is None: missing_surfaces.append('back')
 
         if missing_surfaces:
+            box_label = '6-surface 3D' if is_6surface_box else '4-surface 2D'
             raise RuntimeError(
-                f'poynting box unclosed: missing {", ".join(missing_surfaces)} monitor(s) '
+                f'poynting box unclosed ({box_label}): missing {", ".join(missing_surfaces)} monitor(s) '
                 f'(poynting_box_unclosed)'
             )
 
         p_inc = config.get('incident_flux', config.get('incident_power', 1.0))
         p_inc_norm = _normalize_flux_value(p_inc)
 
-        if isinstance(flux_right, float) and isinstance(flux_left, float) and \
-           isinstance(flux_top, float) and isinstance(flux_bottom, float):
-            phi_out = abs(flux_right) + abs(flux_left) + abs(flux_top) + abs(flux_bottom)
+        active_fluxes = [flux_right, flux_left, flux_top, flux_bottom]
+        if is_6surface_box:
+            active_fluxes.extend([flux_front, flux_back])
+
+        if all(isinstance(f, float) for f in active_fluxes):
+            phi_out = sum(abs(f) for f in active_fluxes)
             inc = p_inc_norm if isinstance(p_inc_norm, float) else 1.0
             r_box = abs(phi_out / inc - 1.0)
             box_closure_residual = float(r_box)
@@ -373,8 +401,11 @@ def verify_post_flight(run_dir: Path) -> dict:
                 'down': float(flux_bottom),
                 'sum': float(phi_out),
             }
-        elif all(isinstance(f, list) for f in (flux_right, flux_left, flux_top, flux_bottom)):
-            lens = [len(f) for f in (flux_right, flux_left, flux_top, flux_bottom)]
+            if is_6surface_box:
+                box_monitors_record['front'] = float(flux_front)
+                box_monitors_record['back'] = float(flux_back)
+        elif all(isinstance(f, list) for f in active_fluxes):
+            lens = [len(f) for f in active_fluxes]
             if len(set(lens)) != 1:
                 raise RuntimeError(
                     f'poynting box monitor array length mismatch: {lens} (poynting_box_unclosed)'
@@ -384,7 +415,7 @@ def verify_post_flight(run_dir: Path) -> dict:
             r_boxes = []
             sums = []
             for i in range(n_pts):
-                phi_out = abs(flux_right[i]) + abs(flux_left[i]) + abs(flux_top[i]) + abs(flux_bottom[i])
+                phi_out = sum(abs(f[i]) for f in active_fluxes)
                 r_boxes.append(abs(phi_out / inc_list[i] - 1.0))
                 sums.append(phi_out)
             r_box = max(r_boxes)
@@ -396,6 +427,9 @@ def verify_post_flight(run_dir: Path) -> dict:
                 'down': flux_bottom,
                 'sum': sums,
             }
+            if is_6surface_box:
+                box_monitors_record['front'] = flux_front
+                box_monitors_record['back'] = flux_back
         else:
             raise RuntimeError(
                 'poynting box monitor flux type mismatch (poynting_box_unclosed)'
@@ -403,8 +437,9 @@ def verify_post_flight(run_dir: Path) -> dict:
 
         box_closure_passed = (box_closure_residual <= tau_box)
         if not box_closure_passed:
+            box_label = '6-surface 3D' if is_6surface_box else '4-surface 2D'
             raise RuntimeError(
-                f'poynting box closure failure: residual R_box {box_closure_residual:.6e} > {tau_box:.1e} '
+                f'poynting box closure failure ({box_label}): residual R_box {box_closure_residual:.6e} > {tau_box:.1e} '
                 f'(poynting_box_unclosed)'
             )
 
@@ -843,11 +878,18 @@ def verify_post_flight(run_dir: Path) -> dict:
             if rel_err is None or not _is_finite_number(rel_err):
                 raise RuntimeError('missing or invalid gradient verification relative_error (gradient_verification_failed)')
             rel_err = float(rel_err)
-            if rel_err > gradient_tolerance:
+            if rel_err > gradient_tolerance or g_ver.get('passed') is False:
                 raise RuntimeError(
                     f'gradient verification failed: relative_error {rel_err:.6e} > {gradient_tolerance:.6e} '
                     f'(gradient_verification_failed)'
                 )
+            if 'fdtd_objective_relative_error' in g_ver:
+                fdtd_err = g_ver.get('fdtd_objective_relative_error')
+                if not _is_finite_number(fdtd_err) or float(fdtd_err) > gradient_tolerance:
+                    raise RuntimeError(
+                        f'end-to-end FDTD gradient verification failed: {fdtd_err} > {gradient_tolerance:.6e} '
+                        f'(gradient_verification_failed)'
+                    )
 
             # Gate 3: Passivity Gate
             p_ratio = fwd.get('power_ratio')
@@ -870,26 +912,85 @@ def verify_post_flight(run_dir: Path) -> dict:
                     f'M3 fabrication constraint violation: tooth={min_tooth} nm, trench={min_trench} nm, '
                     f'violations={violations} (fabrication_violation_m3)'
                 )
+            if m3_info.get('realized_simulation_executed') is True:
+                real_obj = m3_info.get('realized_objective_value')
+                real_p = m3_info.get('realized_power_ratio')
+                if not _is_finite_number(real_obj) or not m3_info.get('realized_epsilon_sha256'):
+                    raise RuntimeError('missing or invalid realized M3 FDTD evaluation (fabrication_violation_m3)')
+                if _is_finite_number(real_p) and float(real_p) > 1.0 + tau_pml:
+                    raise RuntimeError(
+                        f'realized M3 FDTD passivity violation: {float(real_p):.6f} > 1.0 + {tau_pml:.1e} '
+                        f'(passivity_violation)'
+                    )
 
-        # Gate 5: Objective Progress / Monotonicity Gate
+        # Gate 5: Objective Progress / Monotonicity & Terminal State Integrity Gate
+        step0_obj = steps[0].get('objective_value')
+        step_last_obj = steps[-1].get('objective_value')
+        if not _is_finite_number(step0_obj) or not _is_finite_number(step_last_obj):
+            raise RuntimeError('missing or non-finite step objective_value in steps (tamper_detected)')
+
+        step0_obj = float(step0_obj)
+        step_last_obj = float(step_last_obj)
+
+        if 'initial_objective' in inv_data:
+            if not _is_finite_number(inv_data['initial_objective']) or abs(float(inv_data['initial_objective']) - step0_obj) > 1e-9:
+                raise RuntimeError(
+                    f'initial_objective {inv_data.get("initial_objective")} does not match steps[0] {step0_obj} (tamper_detected)'
+                )
+        if 'final_objective' in inv_data:
+            if not _is_finite_number(inv_data['final_objective']) or abs(float(inv_data['final_objective']) - step_last_obj) > 1e-9:
+                raise RuntimeError(
+                    f'final_objective {inv_data.get("final_objective")} does not match terminal step {step_last_obj} '
+                    f'(report-only objective substitution is forbidden) (tamper_detected)'
+                )
+        if 'objective_gain' in inv_data:
+            if not _is_finite_number(inv_data['objective_gain']) or abs(float(inv_data['objective_gain']) - (step_last_obj - step0_obj)) > 1e-9:
+                raise RuntimeError(
+                    f'objective_gain {inv_data.get("objective_gain")} does not match terminal - initial {step_last_obj - step0_obj} (tamper_detected)'
+                )
+
+        # Verify terminal step epsilon_sha256 matches kernel telemetry when both are present
+        term_eps = steps[-1].get('forward', {}).get('epsilon_sha256')
+        if term_eps and telemetry.get('epsilon_sha256') and term_eps != telemetry.get('epsilon_sha256'):
+            raise RuntimeError(
+                f'terminal step epsilon_sha256 {term_eps} does not match kernel telemetry {telemetry.get("epsilon_sha256")} (tamper_detected)'
+            )
+
         if len(steps) >= 2:
-            j_initial = float(inv_data.get('initial_objective', steps[0]['objective_value']))
-            j_final = float(inv_data.get('final_objective', steps[-1]['objective_value']))
-            gain = float(inv_data.get('objective_gain', j_final - j_initial))
+            j_initial = step0_obj
+            j_final = step_last_obj
+            gain = j_final - j_initial
             if j_final <= j_initial or gain <= 0:
                 raise RuntimeError(
                     f'inverse design failed to improve objective: initial={j_initial:.6f}, final={j_final:.6f} '
                     f'(non_monotonic_objective)'
                 )
 
+            if 'initial_realized_objective' in inv_data or 'final_realized_objective' in inv_data:
+                r0 = steps[0].get('m3_fabrication', {}).get('realized_objective_value')
+                r_last = steps[-1].get('m3_fabrication', {}).get('realized_objective_value')
+                if not _is_finite_number(r0) or not _is_finite_number(r_last):
+                    raise RuntimeError('missing realized_objective_value on initial/terminal steps (tamper_detected)')
+                r0_f = float(r0)
+                r_last_f = float(r_last)
+                if 'initial_realized_objective' in inv_data and abs(float(inv_data['initial_realized_objective']) - r0_f) > 1e-9:
+                    raise RuntimeError('initial_realized_objective mismatch with steps[0] (tamper_detected)')
+                if 'final_realized_objective' in inv_data and abs(float(inv_data['final_realized_objective']) - r_last_f) > 1e-9:
+                    raise RuntimeError('final_realized_objective mismatch with steps[-1] (tamper_detected)')
+                if r_last_f < r0_f:
+                    raise RuntimeError(
+                        f'realized M3 discrete design regressed: initial={r0_f:.6f}, final={r_last_f:.6f} '
+                        f'(non_monotonic_objective)'
+                    )
+
         inverse_design_passed = True
         inverse_design_record = {
             'device': inv_data.get('device', 'canonical_grating_2d'),
             'wavelength_um': inv_data.get('wavelength_um', 1.55),
             'iterations_verified': len(steps),
-            'initial_objective': float(inv_data.get('initial_objective', steps[0]['objective_value'])),
-            'final_objective': float(inv_data.get('final_objective', steps[-1]['objective_value'])),
-            'objective_gain': float(inv_data.get('objective_gain', steps[-1]['objective_value'] - steps[0]['objective_value'])),
+            'initial_objective': step0_obj,
+            'final_objective': step_last_obj,
+            'objective_gain': float(step_last_obj - step0_obj),
             'max_gradient_relative_error': max(float(s['gradient_verification']['relative_error']) for s in steps),
             'min_tooth_width_nm': min(float(s['m3_fabrication']['min_tooth_width_nm']) for s in steps),
             'min_trench_width_nm': min(float(s['m3_fabrication']['min_trench_width_nm']) for s in steps),
@@ -897,6 +998,19 @@ def verify_post_flight(run_dir: Path) -> dict:
             'm3_compliant': True,
             'monotonic_progress': True,
         }
+        if 'initial_realized_objective' in inv_data and 'final_realized_objective' in inv_data:
+            inverse_design_record['initial_realized_objective'] = float(inv_data['initial_realized_objective'])
+            inverse_design_record['final_realized_objective'] = float(inv_data['final_realized_objective'])
+            inverse_design_record['realized_objective_gain'] = float(
+                inv_data['final_realized_objective'] - inv_data['initial_realized_objective']
+            )
+            inverse_design_record['m3_realized_fdtd_verified'] = True
+        if any('fdtd_objective_relative_error' in s.get('gradient_verification', {}) for s in steps):
+            inverse_design_record['max_fdtd_gradient_relative_error'] = max(
+                float(s['gradient_verification'].get('fdtd_objective_relative_error', s['gradient_verification']['relative_error']))
+                for s in steps
+            )
+            inverse_design_record['full_fdtd_gradient_verified'] = True
 
     # Issue verification certificate
     certificate = {
@@ -936,6 +1050,8 @@ def verify_post_flight(run_dir: Path) -> dict:
         certificate['tags'].append('verified:resumed_run')
     if box_closure_passed:
         certificate['tags'].extend(['verified:v2_box_closure', 'verified:poynting_box_closed'])
+        if is_6surface_box:
+            certificate['tags'].append('verified:v2_box_closure_3d')
     if decay_passed:
         certificate['tags'].extend(['verified:v2_decay', 'verified:spectral_decay'])
     if telemetry_shutoff:
@@ -968,7 +1084,19 @@ def verify_post_flight(run_dir: Path) -> dict:
             'verified:analytic_jacobian',
             'verified:m3_fabrication_compliant',
         ])
+        if inverse_design_record.get('full_fdtd_gradient_verified'):
+            certificate['tags'].append('verified:full_fdtd_gradient')
+        if inverse_design_record.get('m3_realized_fdtd_verified'):
+            certificate['tags'].append('verified:m3_realized_fdtd')
         certificate['inverse_design'] = inverse_design_record
+
+    payload_bytes = json.dumps(certificate, sort_keys=True, separators=(',', ':')).encode('utf-8')
+    certificate['certificate_payload_sha256'] = hashlib.sha256(payload_bytes).hexdigest()
+    notary_secret = os.environ.get('TORCHFDTD_NOTARY_SECRET')
+    if notary_secret:
+        certificate['hmac_sha256'] = hmac.new(
+            notary_secret.encode('utf-8'), payload_bytes, hashlib.sha256
+        ).hexdigest()
 
     cert_path = run_dir / 'verification_certificate.json'
     cert_path.write_text(json.dumps(certificate, indent=2) + '\n', encoding='utf-8')

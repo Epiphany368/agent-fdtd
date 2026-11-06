@@ -1,10 +1,11 @@
-"""The six tools' platform logic.
+"""The eleven MCP tools' platform logic.
 
-Only ``submit_run`` starts a process, and the only program it starts is
-``tools/run.sh``.  The exit status of that process is returned unchanged; ``ok``
-is derived from it, never from the presence of a result file.
+Only ``submit_run`` (and ``resume_run``) starts a process, and the only program
+it starts is ``tools/run.sh``.  The exit status of that process is returned
+unchanged; ``ok`` is derived from it, never from the presence of a result file.
 """
 import hashlib
+import hmac
 import json
 import os
 from pathlib import Path
@@ -857,6 +858,24 @@ def get_certificate(run_id: str, root=None) -> dict:
             actual_rdo_sha = hashlib.sha256(readout_file.read_bytes()).hexdigest()
             if actual_rdo_sha != cert_data["readout_sha256"]:
                 tamper_issues.append("readout.json hash does not match certificate")
+
+    if "certificate_payload_sha256" in cert_data:
+        payload_copy = {
+            k: v
+            for k, v in cert_data.items()
+            if k not in ("certificate_payload_sha256", "hmac_sha256")
+        }
+        payload_bytes = json.dumps(payload_copy, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        expected_payload_sha = hashlib.sha256(payload_bytes).hexdigest()
+        if expected_payload_sha != cert_data["certificate_payload_sha256"]:
+            tamper_issues.append("verification_certificate.json payload hash mismatch")
+        notary_secret = os.environ.get("TORCHFDTD_NOTARY_SECRET")
+        if notary_secret and "hmac_sha256" in cert_data:
+            expected_hmac = hmac.new(
+                notary_secret.encode("utf-8"), payload_bytes, hashlib.sha256
+            ).hexdigest()
+            if not hmac.compare_digest(expected_hmac, str(cert_data["hmac_sha256"])):
+                tamper_issues.append("verification_certificate.json HMAC signature mismatch")
 
     verified = bool(cert_data.get("verified", False))
     exit_code = manifest_data.get("exit_code")

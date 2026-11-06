@@ -371,6 +371,119 @@ class PostNotaryUnitTests(unittest.TestCase):
             self.assertEqual(cert['kind'], 'audit')
             self.assertIn('audit_only', cert['tags'])
 
+    def test_3d_six_surface_poynting_box_closure_passes(self):
+        """3D simulation with all 6 Poynting box surfaces closing to P_in = 1.0 -> passes."""
+        with tempfile.TemporaryDirectory() as td:
+            run_dir = self._create_sample_run(
+                Path(td),
+                config_data={'task': '3D Box Closure PC', 'kind': 'physics', 'dimension': '3d'},
+                telemetry_data={
+                    'schema_version': '1.0',
+                    'epsilon_sha256': 'e' * 64,
+                    'is_lossless': True,
+                    'executed_steps': 5000,
+                    'energy_decay_ratio': 1e-7,
+                    'monitors': {
+                        'box-right': {'flux': 0.5000000},
+                        'box-left': {'flux': 0.1000000},
+                        'box-top': {'flux': 0.1500000},
+                        'box-bottom': {'flux': 0.0500000},
+                        'box-front': {'flux': 0.1200000},
+                        'box-back': {'flux': 0.0800000},
+                    },
+                },
+                readout_data={
+                    'simulation_executed': True,
+                    'executed_steps': 5000,
+                    'epsilon_sha256': 'e' * 64,
+                    'is_lossless': True,
+                    'dimension': '3d',
+                    'measured': {'T': 0.5000000, 'R': 0.1000000},
+                },
+            )
+            cert = self.notary.verify_post_flight(run_dir)
+            self.assertTrue(cert['verified'])
+            self.assertTrue(cert['box_closure_passed'])
+            self.assertLessEqual(cert['box_closure_residual'], 1e-6)
+            self.assertIn('verified:v2_box_closure', cert['tags'])
+            self.assertIn('verified:v2_box_closure_3d', cert['tags'])
+            self.assertTrue(bool(cert.get('certificate_payload_sha256')))
+
+    def test_3d_six_surface_poynting_box_unclosed_fails(self):
+        """3D simulation where 6-surface Poynting box leaks 15% power -> fails with poynting_box_unclosed."""
+        with tempfile.TemporaryDirectory() as td:
+            run_dir = self._create_sample_run(
+                Path(td),
+                config_data={'task': '3D Box Closure NC', 'kind': 'physics', 'dimension': '3d'},
+                telemetry_data={
+                    'schema_version': '1.0',
+                    'epsilon_sha256': 'e' * 64,
+                    'is_lossless': True,
+                    'executed_steps': 5000,
+                    'energy_decay_ratio': 1e-7,
+                    'monitors': {
+                        'box-right': {'flux': 0.5000000},
+                        'box-left': {'flux': 0.1000000},
+                        'box-top': {'flux': 0.1000000},
+                        'box-bottom': {'flux': 0.0500000},
+                        'box-front': {'flux': 0.0500000},
+                        'box-back': {'flux': 0.0500000},  # Total = 0.85 != 1.0
+                    },
+                },
+                readout_data={
+                    'simulation_executed': True,
+                    'executed_steps': 5000,
+                    'epsilon_sha256': 'e' * 64,
+                    'is_lossless': True,
+                    'dimension': '3d',
+                    'measured': {'T': 0.5000000, 'R': 0.1000000},
+                },
+            )
+            with self.assertRaises(RuntimeError) as ctx:
+                self.notary.verify_post_flight(run_dir)
+            err = str(ctx.exception)
+            self.assertIn('poynting_box_unclosed', err)
+            self.assertIn('6-surface 3D', err)
+
+    def test_3d_six_surface_poynting_box_missing_front_back_when_required_fails(self):
+        """3D simulation with require_box_closure=True but only 4 monitors -> fails with poynting_box_unclosed."""
+        with tempfile.TemporaryDirectory() as td:
+            run_dir = self._create_sample_run(
+                Path(td),
+                config_data={
+                    'task': '3D Box Missing Surfaces NC',
+                    'kind': 'physics',
+                    'dimension': '3d',
+                    'require_box_closure': True,
+                },
+                telemetry_data={
+                    'schema_version': '1.0',
+                    'epsilon_sha256': 'e' * 64,
+                    'is_lossless': True,
+                    'executed_steps': 5000,
+                    'energy_decay_ratio': 1e-7,
+                    'monitors': {
+                        'box-right': {'flux': 0.5000000},
+                        'box-left': {'flux': 0.2000000},
+                        'box-top': {'flux': 0.1500000},
+                        'box-bottom': {'flux': 0.1500000},
+                    },
+                },
+                readout_data={
+                    'simulation_executed': True,
+                    'executed_steps': 5000,
+                    'epsilon_sha256': 'e' * 64,
+                    'is_lossless': True,
+                    'dimension': '3d',
+                    'measured': {'T': 0.5000000, 'R': 0.2000000},
+                },
+            )
+            with self.assertRaises(RuntimeError) as ctx:
+                self.notary.verify_post_flight(run_dir)
+            err = str(ctx.exception)
+            self.assertIn('poynting_box_unclosed', err)
+            self.assertIn('6-surface 3D', err)
+
 
 class LauncherPostFlightNegativeControlTests(unittest.TestCase):
     """End-to-end integration tests driving tools/launch.py.

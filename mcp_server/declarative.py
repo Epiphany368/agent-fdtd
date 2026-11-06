@@ -544,11 +544,30 @@ def validate_project(
     # Memory estimate (MB): 6 field components * 8 bytes * 2 buffers
     mem_mb = (total_cells * 6 * 8 * 2) / (1024 * 1024)
 
-    # Check Poynting box enclosure closure
+    # Check Poynting box enclosure closure (4 surfaces in 2D, 6 surfaces in 3D)
     monitors = project_dict.get("monitors", [])
-    box_mon_names = {m.get("name") for m in monitors if isinstance(m, dict)}
-    required_box = {"box-right", "box-left", "box-top", "box-bottom"}
-    poynting_box_closed = required_box.issubset(box_mon_names) or {"box_right", "box_left", "box_top", "box_bottom"}.issubset(box_mon_names)
+    box_mon_names = {m.get("name") or m.get("id") for m in monitors if isinstance(m, dict)}
+    if str(dimension).lower() == "3d":
+        required_hyphen = {"box-right", "box-left", "box-top", "box-bottom", "box-front", "box-back"}
+        required_under = {"box_right", "box_left", "box_top", "box_bottom", "box_front", "box_back"}
+    else:
+        required_hyphen = {"box-right", "box-left", "box-top", "box-bottom"}
+        required_under = {"box_right", "box_left", "box_top", "box_bottom"}
+    poynting_box_closed = required_hyphen.issubset(box_mon_names) or required_under.issubset(box_mon_names)
+
+    # If poynting_box conservation is explicitly requested, require full closure
+    poynting_box_req = False
+    if target_config and isinstance(raw_data, dict) and raw_data.get("poynting_box") is True:
+        poynting_box_req = True
+    elif isinstance(project, dict) and project.get("poynting_box") is True:
+        poynting_box_req = True
+    elif kwargs.get("poynting_box") is True or isinstance(kwargs.get("poynting_box"), dict):
+        poynting_box_req = True
+    if poynting_box_req and not poynting_box_closed:
+        errors.append(
+            f"Poynting enclosure box is unclosed for dimension='{dimension}'; "
+            f"required surfaces: {sorted(required_hyphen)}"
+        )
 
     canonical_repr = json.dumps(project_dict, sort_keys=True, separators=(",", ":"))
     canonical_sha256 = hashlib.sha256(canonical_repr.encode("utf-8")).hexdigest()

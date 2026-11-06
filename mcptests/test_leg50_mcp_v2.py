@@ -33,6 +33,7 @@ TOOL_NAMES_V2 = {
     "create_project",
     "validate_project",
     "resume_run",
+    "inspect_breakpoint",
     "get_certificate",
 }
 
@@ -44,7 +45,7 @@ class TestDeclarativeSceneBuilder(unittest.IsolatedAsyncioTestCase):
         async with open_session() as (session, _errlog):
             listed = await session.list_tools()
             names = {tool.name for tool in listed.tools}
-            self.assertTrue(TOOL_NAMES_V2.issubset(names), f"Missing tools: {TOOL_NAMES_V2 - names}")
+            self.assertEqual(names, TOOL_NAMES_V2, f"Tool set mismatch: {names ^ TOOL_NAMES_V2}")
 
     async def test_explain_exit_66_registered(self):
         async with open_session() as (session, _errlog):

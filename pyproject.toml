@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agent-fdtd"
-version = "1.0.0"
-description = "AgentFDTD (v1.0.0): Zero-trust machine-verified FDTD simulation and inverse-design platform with MCP server"
+version = "1.0.1"
+description = "AgentFDTD (v1.0.1): Zero-trust machine-verified FDTD simulation and inverse-design platform with 11-tool MCP server"
 readme = "mcp_server/README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
