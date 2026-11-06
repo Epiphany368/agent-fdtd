@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "torchfdtd-platform-mcp"
+version = "0.1.0"
+description = "MCP server for the torchfdtd-platform: the model proposes, the harness disposes"
+readme = "mcp_server/README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "mcp>=1.0,<2",
+]
+
+[project.optional-dependencies]
+# Kept as an explicit extra as well as a runtime dependency: `pip install -e .`
+# must install the entry point as documented, and `pip install -e .[mcp]` is the
+# intent-revealing form. There is no model SDK dependency of any kind.
+mcp = ["mcp>=1.0,<2"]
+
+[project.scripts]
+torchfdtd-platform-mcp = "mcp_server.cli:main"
+
+[tool.setuptools]
+packages = ["mcp_server"]

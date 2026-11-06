@@ -1,0 +1,62 @@
+{
+  "kind": "canary",
+  "task": "Leg 3: the analytic case library (V1) -- Fresnel interface and Fabry-Perot slab against their closed-form laws, with the tolerance kind and basis declared before the run",
+  "policy": "leg3-analytic-v1",
+  "frequency_points": 41,
+  "core_index": 3.476558727709872,
+  "cladding_index": 1.4440231286977714,
+  "wavelength_um": 1.54925,
+  "precision": "float64",
+  "cases": [
+    {
+      "id": "analytic-interface",
+      "kind": "interface",
+      "index": 3.5,
+      "ppw": 40,
+      "duration_fs": 260
+    },
+    {
+      "id": "analytic-slab",
+      "kind": "slab",
+      "index": 3.5,
+      "ppw": 40,
+      "duration_fs": 260
+    }
+  ],
+  "analytic_cases": [
+    {
+      "id": "V1-fresnel",
+      "law": "fresnel",
+      "case_id": "analytic-interface",
+      "index": 3.5,
+      "tolerance": 0.01,
+      "tolerance_kind": "discretisation-limited floor",
+      "basis": "Inherited from the reference project's A1 canary (src/run_canary.py, function analyze, branch interface), which requires max|R - exact| and max|T - exact| <= 0.01 at ppw >= 20 for index 1.5 and 3.5. INHERITED, not measured here. It is the achievable floor at that resolution, not a statement about the physics. This leg also reports the measured error so the reader can judge.",
+      "scope_match": true,
+      "scope_match_reason": "The copied project builder places a half-space of index 3.5 behind a single planar interface, with a one-way plane source at normal incidence and vacuum on the incident side. That is exactly the configuration the Fresnel law assumes."
+    },
+    {
+      "id": "V1-airy",
+      "law": "airy",
+      "case_id": "analytic-slab",
+      "index": 3.5,
+      "tolerance": 0.01,
+      "tolerance_kind": "discretisation-limited floor",
+      "basis": "Inherited from the reference project's A1 canary (src/run_canary.py, function analyze, branch slab), same threshold and same reason as V1-fresnel. INHERITED, not measured here. The slab's optical thickness is 2.1 micrometres, which is the value that project hard-codes and uses in its own exact curve.",
+      "scope_match": true,
+      "scope_match_reason": "The copied project builder places one lossless non-dispersive slab of index 3.5 and optical thickness 2.1 micrometres in vacuum, with a one-way plane source at normal incidence. That is what the Airy law assumes. The dielectric is non-dispersive in this solver, so the lossless assumption holds."
+    }
+  ],
+  "dropped_analytic_cases": [
+    {
+      "id": "V1-slab-mode",
+      "reason": "Stop condition 1: the law assumes a SYMMETRIC slab of thickness 0.11 micrometres with a guided mode and a modal launch. The copied project builder constructs a planar slab with a plane-wave source and PML ends, not a symmetric waveguide with a modal port. Applying the law there would be an approximation, so the case is dropped rather than approximated.",
+      "source": "reference project src/run_tm_guide.py, function analytic_tm"
+    },
+    {
+      "id": "V1-mie",
+      "reason": "Stop condition 3: the comparison needs a sphere and a closed-surface flux. The copied project builder has no sphere, so this case needs solver capability that does not exist in this repository yet. Register it as its own step.",
+      "source": "reference project src/run_kernel_consistency.py, Mie series"
+    }
+  ]
+}

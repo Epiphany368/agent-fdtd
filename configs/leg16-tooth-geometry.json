@@ -1,0 +1,75 @@
+{
+  "core_index": 3.476558727709872,
+  "cladding_index": 1.4440231286977714,
+  "wavelength_um": 1.54925,
+  "width_um": 0.126,
+  "precision": "float64",
+  "expected": {
+    "source": "reference project run 20261012T024518Z-156698, script src/run_b9_native_shape_n8.py, row baseline-adjoint (shift 0), recorded with solver commit ebcc0f7",
+    "tolerance_relative": 1e-12,
+    "cases": {
+      "native-n8-forward-shift0-v1p23": {
+        "T": 0.5743797002155621,
+        "R": 0.10389604258260136,
+        "epsilon_sha256": "379475a1bd5b1f1e8a55c30b2d1ab408ae35ef0a8577cc62aa04a303fda52835"
+      }
+    }
+  },
+  "kind": "audit",
+  "task": "Leg 16: geometry-only diagnostic at the four registered tooth meshes, unchanged copied CUDA instrument; no time-domain simulation.",
+  "policy": "leg16-tooth-geometry-v1",
+  "mode": "geometry",
+  "cost_valve_seconds": 3600,
+  "input_basis": {
+    "core_index, cladding_index, wavelength_um, width_um, precision, expected": "configs/leg1-n8-forward.json, identical values and recorded control",
+    "z_cells, periods, duration_fs, shift_nm, transition_nm": "configs/leg1-n8-forward.json cases[0], unchanged at all four rungs",
+    "dx_um, dy_um": "plan.md LEG 16 four registered rungs; powers-of-two refinement of leg-1 dx=0.02, dy=0.01 um",
+    "domain, z mesh, geometry, source, monitors, boundaries": "src/run_b9_native_shape_n8.py scene(), imported unchanged including native PML; z step 0.04 um, domain 13.48 x 6 x 0.2 um",
+    "launch, readout, checkpoints, gpu_budget_bytes": "src/leg1_forward.py launch_for() and identical forward modal ratios; steward amendment 2 a2f5ab2 authorizes ModeInjectedPlaneSimulation(project, launch) with library defaults, no explicit AdjointOptions or budget override",
+    "geometry_instrument": "src/run_b9_native_shape_n8.py geometry_only(), imported unchanged; CUDA autograd per steward ruling 2026-10-19 (registration amendment 026dda2)",
+    "cost_valve_seconds": "plan.md LEG 16 1 GPU-hour campaign ceiling; 3600 seconds",
+    "5/2.5 rung disposition": "Steward amendment 2 a2f5ab2: no re-attempt; unchanged native scene requires x=128, y=160 PML layers against the native validation cap of 100; record known refusal without constructing the rung"
+  },
+  "cases": [
+    {
+      "id": "tooth-40-20",
+      "dx_um": 0.04,
+      "dy_um": 0.02,
+      "z_cells": 5,
+      "periods": 8,
+      "duration_fs": 500,
+      "shift_nm": 0,
+      "transition_nm": 20
+    },
+    {
+      "id": "tooth-20-10",
+      "dx_um": 0.02,
+      "dy_um": 0.01,
+      "z_cells": 5,
+      "periods": 8,
+      "duration_fs": 500,
+      "shift_nm": 0,
+      "transition_nm": 20
+    },
+    {
+      "id": "tooth-10-5",
+      "dx_um": 0.01,
+      "dy_um": 0.005,
+      "z_cells": 5,
+      "periods": 8,
+      "duration_fs": 500,
+      "shift_nm": 0,
+      "transition_nm": 20
+    },
+    {
+      "id": "tooth-5-2.5",
+      "dx_um": 0.005,
+      "dy_um": 0.0025,
+      "z_cells": 5,
+      "periods": 8,
+      "duration_fs": 500,
+      "shift_nm": 0,
+      "transition_nm": 20
+    }
+  ]
+}

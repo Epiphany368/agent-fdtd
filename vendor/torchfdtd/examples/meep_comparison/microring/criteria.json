@@ -1,0 +1,53 @@
+{
+  "example": "microring",
+  "declared": "2026-09-22, before the first comparison run",
+  "observables": {
+    "T": "transmission spectrum flux_out(ring)/flux_out(straight bus) on the 401 wavelength samples of geometry.json",
+    "resonances": "every local minimum of T in the band with T below 0.95 and a prominence above 0.03, refined by the Lorentzian fit below; listed for both solvers",
+    "fsr_nm": "mean spacing of consecutive resonance wavelengths",
+    "nearest_1550": "the resonance closest to 1.55 um; Lorentzian fit T(l) = base - depth / (1 + (2 (l - l0) / fwhm)^2) on the samples within +-4 nm of the minimum, identical code for both records",
+    "q_loaded": "l0 / fwhm from that fit",
+    "extinction_db": "10 log10(base / (base - depth)) from that fit",
+    "rms_T": "root mean square of T_torchfdtd - T_meep over all 401 samples"
+  },
+  "criteria": {
+    "resonance_wavelength_nm": {
+      "metric": "max |l0_torchfdtd - l0_meep| over the matched resonances (each solver's list must have the same length, matched in order)",
+      "limit": 0.2
+    },
+    "q_relative": {
+      "metric": "|Q_torchfdtd - Q_meep| / Q_meep for the resonance nearest 1.55 um",
+      "limit": 0.05
+    },
+    "extinction_db": {
+      "metric": "|ER_torchfdtd - ER_meep| in dB for the resonance nearest 1.55 um",
+      "limit": 1.0
+    },
+    "rms_T": {
+      "metric": "rms_T",
+      "limit": 0.02
+    },
+    "grid_match": {
+      "metric": "cells, dx, dt, steps, PML cells and the geometry.json sha256 equal in both records; dt and dx to 1e-9 relative",
+      "limit": "equal"
+    }
+  },
+  "fixture_targets": {
+    "loaded_q_window": [
+      500,
+      2000
+    ],
+    "gap_um": 0.054,
+    "run_time_ps": 5.0,
+    "note": "The brief asked for a gap between 0.15 and 0.2 um; at this fixture that gives a loaded Q of 1e4 or more (see geometry.json bus.gap_note), so the gap was moved to 0.054 um to land in the Q window. Recorded here before any comparison run."
+  },
+  "detection": {
+    "max_T": 0.95,
+    "prominence": 0.03,
+    "note": "resonance detection thresholds named in observables.resonances"
+  },
+  "notes_after_first_comparison": [
+    "2026-09-22, after the first compare.py run: the declared detection (T < 0.95, prominence > 0.03) also returns the first truncation sidelobes (T = 0.92-0.94, prominence 0.09-0.11) on either side of the 1537.5 nm and 1592.7 nm resonances, identically in both records. Those minima have no Lorentzian width (the fit collapses to zero width), so compare.py keeps every detected minimum in the list with a valid flag, locates a minimum without a valid fit by the parabola through its three samples, evaluates the 0.2 nm wavelength criterion on all matched minima, and takes the free spectral range and the nearest-1.55 um resonance from the minima with a valid fit. The thresholds and limits above are unchanged.",
+    "2026-09-22, after the verifier's review: fixture_targets.loaded_q_window is a fixture target, not a solver-agreement criterion, and it can only be checked against the fitted Q, which is broadened by the 5 ps window (a decay truncated at 1.5 amplitude e-folds has 1.98 times the untruncated FWHM, at 2.5 e-folds 1.33 times). The fitted Q of the resonance nearest 1.55 um (1961) is therefore a lower bound on its loaded Q, and the window [500, 2000] is not demonstrated for this fixture; the ring-down estimate of 950 that set the gap is a broadband energy-decay figure dominated by the lowest-Q orders. The test asserts the solver-agreement criteria only; the limits above are unchanged."
+  ]
+}

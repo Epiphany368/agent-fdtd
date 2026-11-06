@@ -1,0 +1,183 @@
+{
+  "kind": "canary",
+  "task": "Leg 18 (C1): the leg-13 standing control set with the fixture absorber deepened from 32 to 48 PML cells; tolerance unchanged at 1e-6",
+  "policy": "leg13-standing-controls-v1",
+  "frequency_points": 21,
+  "duration_fs": 260,
+  "core_index": 3.476558727709872,
+  "cladding_index": 1.4440231286977714,
+  "wavelength_um": 1.54925,
+  "precision": "float64",
+  "pml_cells": 48,
+  "cases": [
+    {
+      "id": "control-interface",
+      "kind": "interface",
+      "index": 3.5,
+      "ppw": 40,
+      "duration_fs": 260
+    },
+    {
+      "id": "control-slab",
+      "kind": "slab",
+      "index": 3.5,
+      "ppw": 40,
+      "duration_fs": 260
+    },
+    {
+      "id": "control-symmetric",
+      "kind": "empty-soft",
+      "index": 3.5,
+      "ppw": 40,
+      "duration_fs": 260
+    }
+  ],
+  "controls": {
+    "energy_closure": {
+      "tolerance": 1e-06,
+      "basis": "Physics: in a lossless cell whose two exits are both fully monitored and whose transverse faces are periodic, T + R = 1 exactly. The tolerance is a numerical floor, not a physics allowance. The largest closure residual of any lossless case archived before this leg is 7.51e-07 (legs 3 and 4, slab, ppw 40, 260 fs), rounded up to 1e-6. Leg 15 attributed that residual: it is an echo of the 32-cell PML of this fixture returning through the structure and interfering at the two extraction planes, measured as 13x per doubling of PML cells from 8 to 32 and linear in the reflected field amplitude (residual / r constant to 0.6% over three index contrasts). It is fixture-bound, not a property of the scheme: at 48 PML cells the same fixture gives 1.61e-07 and at 50 gives 1.38e-07. A residual above the tolerance still means a monitor no longer captures all of the power; a residual below it does not mean the boundary is transparent."
+    },
+    "symmetric_source": {
+      "tolerance": 0.001,
+      "min_fraction": 0.01,
+      "basis": "Physics: a soft line source in a homogeneous cell with identical PML at both ends is mirror-symmetric about its own E node, so it must send equal power to two mirror monitors. The gate is the plan's registered 1.000x, i.e. agreement to three decimals; the measured deviation and its margin are reported, not only the verdict."
+    },
+    "negative": {
+      "rule": "The one-way source of the interface case's empty run must FAIL the same 1.000x gate. If it passes, the symmetric control cannot tell a symmetric source from a one-way one and proves nothing."
+    }
+  },
+  "units": {
+    "control-interface": {
+      "wavelength_um": {
+        "unit": "micrometre",
+        "plane": "sampling axis (vacuum wavelength)",
+        "span": "1.2 to 1.8 micrometres, 21 points, uniform in wavelength",
+        "normalisation": "none needed: this is the axis, not a measured quantity"
+      },
+      "R": {
+        "unit": "dimensionless",
+        "plane": "reflection monitor, normal x, at x = -2 micrometres",
+        "span": "full periodic transverse width of the monitor, 6 cells, by the single z cell",
+        "normalisation": "signed reflected flux divided by the empty-domain reference flux through the same monitor, with the incident contribution subtracted"
+      },
+      "T": {
+        "unit": "dimensionless",
+        "plane": "transmission monitor, normal x, at x = +2 micrometres",
+        "span": "full periodic transverse width of the monitor, 6 cells, by the single z cell",
+        "normalisation": "signed transmitted flux divided by the empty-domain reference flux through the same monitor"
+      },
+      "energy_residual": {
+        "unit": "dimensionless",
+        "plane": "reflection and transmission monitors together",
+        "span": "the union of the two monitor spans above",
+        "normalisation": "max |R + T - 1| over the sampled band; a closure check, not an efficiency"
+      },
+      "empty_reflection_floor": {
+        "unit": "dimensionless",
+        "plane": "scattered monitor, normal x, at x = -3 micrometres",
+        "span": "full periodic transverse width of the monitor, 6 cells, by the single z cell",
+        "normalisation": "max over the band of |empty-run scattered-monitor flux| divided by |empty-run reflection-monitor flux| (the x = -2 micrometre monitor)"
+      },
+      "sourcepower_reduced": {
+        "unit": "reduced-unit",
+        "plane": "the one-way source line, reconstructed from the discrete E and interpolated Yee H",
+        "span": "the transverse source line, 6 cells",
+        "normalisation": "solver reduced units, cross-checked against the same-monitor empty-domain flux; NOT a physical power in watts"
+      },
+      "reference_power_reduced": {
+        "unit": "reduced-unit",
+        "plane": "reflection monitor, normal x, at x = -2 micrometres (snapped), in the EMPTY run",
+        "span": "full periodic transverse width of the monitor, 6 cells, by the single z cell",
+        "normalisation": "none: |signed empty-run flux| through the reflection monitor, per frequency, solver reduced units; the denominator of R and of the floor, not a power in watts"
+      },
+      "sourcepower_max_relative_error": {
+        "unit": "dimensionless",
+        "plane": "the one-way source line against the same-monitor reference flux",
+        "span": "the sampled band, 21 points",
+        "normalisation": "max |sourcepower / reference - 1|; a self-consistency check of the incident-power estimate"
+      }
+    },
+    "control-slab": {
+      "wavelength_um": {
+        "unit": "micrometre",
+        "plane": "sampling axis (vacuum wavelength)",
+        "span": "1.2 to 1.8 micrometres, 21 points, uniform in wavelength",
+        "normalisation": "none needed: this is the axis, not a measured quantity"
+      },
+      "R": {
+        "unit": "dimensionless",
+        "plane": "reflection monitor, normal x, at x = -2 micrometres",
+        "span": "full periodic transverse width of the monitor, 6 cells, by the single z cell",
+        "normalisation": "signed reflected flux divided by the empty-domain reference flux through the same monitor, with the incident contribution subtracted"
+      },
+      "T": {
+        "unit": "dimensionless",
+        "plane": "transmission monitor, normal x, at x = +2 micrometres",
+        "span": "full periodic transverse width of the monitor, 6 cells, by the single z cell",
+        "normalisation": "signed transmitted flux divided by the empty-domain reference flux through the same monitor"
+      },
+      "energy_residual": {
+        "unit": "dimensionless",
+        "plane": "reflection and transmission monitors together",
+        "span": "the union of the two monitor spans above",
+        "normalisation": "max |R + T - 1| over the sampled band; a closure check, not an efficiency"
+      },
+      "empty_reflection_floor": {
+        "unit": "dimensionless",
+        "plane": "scattered monitor, normal x, at x = -3 micrometres",
+        "span": "full periodic transverse width of the monitor, 6 cells, by the single z cell",
+        "normalisation": "max over the band of |empty-run scattered-monitor flux| divided by |empty-run reflection-monitor flux| (the x = -2 micrometre monitor)"
+      },
+      "sourcepower_reduced": {
+        "unit": "reduced-unit",
+        "plane": "the one-way source line, reconstructed from the discrete E and interpolated Yee H",
+        "span": "the transverse source line, 6 cells",
+        "normalisation": "solver reduced units, cross-checked against the same-monitor empty-domain flux; NOT a physical power in watts"
+      },
+      "reference_power_reduced": {
+        "unit": "reduced-unit",
+        "plane": "reflection monitor, normal x, at x = -2 micrometres (snapped), in the EMPTY run",
+        "span": "full periodic transverse width of the monitor, 6 cells, by the single z cell",
+        "normalisation": "none: |signed empty-run flux| through the reflection monitor, per frequency, solver reduced units; the denominator of R and of the floor, not a power in watts"
+      },
+      "sourcepower_max_relative_error": {
+        "unit": "dimensionless",
+        "plane": "the one-way source line against the same-monitor reference flux",
+        "span": "the sampled band, 21 points",
+        "normalisation": "max |sourcepower / reference - 1|; a self-consistency check of the incident-power estimate"
+      }
+    },
+    "control-symmetric": {
+      "wavelength_um": {
+        "unit": "micrometre",
+        "plane": "sampling axis (vacuum wavelength)",
+        "span": "1.2 to 1.8 micrometres, 21 points, uniform in wavelength",
+        "normalisation": "none needed: this is the axis, not a measured quantity"
+      },
+      "forward_flux_reduced": {
+        "unit": "reduced-unit",
+        "plane": "transmission monitor, normal x, at x = +2 micrometres (snapped), soft source at x = 0",
+        "span": "full periodic transverse width of the monitor, 6 cells, by the single z cell",
+        "normalisation": "none: signed +x flux, per frequency, solver reduced units"
+      },
+      "backward_flux_reduced": {
+        "unit": "reduced-unit",
+        "plane": "reflection monitor, normal x, at x = -2 micrometres (snapped), the mirror image of the forward monitor about the source",
+        "span": "full periodic transverse width of the monitor, 6 cells, by the single z cell",
+        "normalisation": "none: minus the signed flux (so -x power is positive), per frequency, solver reduced units"
+      },
+      "symmetric_ratio_max_deviation": {
+        "unit": "dimensionless",
+        "plane": "the two mirror monitors above",
+        "span": "the sampled band, frequencies carrying at least 1 percent of the peak power",
+        "normalisation": "max |forward / backward - 1|; the 1.000x control"
+      },
+      "oneway_ratio_max_deviation": {
+        "unit": "dimensionless",
+        "plane": "transmission monitor at +2 and scattered monitor at -3 micrometres, one-way source, EMPTY run",
+        "span": "the sampled band, frequencies where both carry at least 1 percent of the peak power; if none, the backward side is below the floor everywhere",
+        "normalisation": "max |forward / backward - 1| for a ONE-WAY source: the negative control, which must fail the 1.000x gate"
+      }
+    }
+  }
+}

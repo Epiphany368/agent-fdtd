@@ -1,0 +1,13 @@
+{
+  "kind": "audit",
+  "task": "Leg 7 part 1: re-derive the Array Scanning Method cost rules in this repository and pick M per waist; pure arithmetic, no FDTD",
+  "policy": "leg7-asm-feasibility-v1",
+  "wavelength_um": 1.54925,
+  "period_um": 0.9,
+  "waists_um": [2.0, 5.0],
+  "tolerance": 0.01,
+  "tolerance_basis": "Registered reconstruction tolerance for the ASM sum: relative L2 error over the beam, 1 percent. It is the same order as the reference project's second tolerance in its own feasibility sweep, and it is the number this leg must meet before any Bloch campaign is launched.",
+  "orders": [4, 6, 8, 12, 16, 24, 32, 48, 64, 96],
+  "budget_runs": 96,
+  "budget_note": "Affordability bound for part 2, in Bloch runs per waist. A waist needing more than this is reported as not affordable at this budget rather than silently dropped."
+}

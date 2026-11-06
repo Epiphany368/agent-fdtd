@@ -1,0 +1,28 @@
+{
+  "kind": "audit",
+  "task": "Leg 11: inventory which of the reported numbers have a registered physics check and which do not, and assign a leg and a cost to every gap. Inventory only: no label is changed, no check implemented, no physics re-run.",
+  "policy": "leg11-coverage-audit-v1",
+  "leg": 11,
+  "purpose": "Inventory which reported numbers have a registered physics check and which do not. No label is changed, no check is implemented, no physics is re-run.",
+  "inputs": {
+    "runs": "runs/*/readout.json (read-only, every archived run except this one)"
+  },
+  "declared_jurisdiction": {
+    "registered_checks_may_be_cited": [
+      "V1-fresnel",
+      "V1-airy",
+      "V2-a",
+      "V2-b",
+      "V2-c",
+      "V2-d"
+    ],
+    "registered_but_absent_may_never_close_a_gap": [
+      "V4"
+    ]
+  },
+  "stop_conditions": [
+    "a field whose meaning cannot be established here is reported as unknown, never assigned a check",
+    "two sources disagreeing about which check covers a field: report both, do not pick",
+    "any fork change needed: stop"
+  ]
+}

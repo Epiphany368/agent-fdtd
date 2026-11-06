@@ -1,0 +1,96 @@
+{
+  "name": "microring",
+  "description": "2D microring resonator side-coupled to a straight bus waveguide, out-of-plane E (Ez; TM in Meep's 2D naming). Effective-index model of a 220 nm SOI TE slab: core n=2.83, SiO2 cladding n=1.444, as in the Meep ring tutorials.",
+  "units": {
+    "length": "um",
+    "time": "s"
+  },
+  "background_index": 1.444,
+  "core_index": 2.83,
+  "mesh_um": 0.024,
+  "cells_per_core_wavelength_at_1.5um": 22.084805653710248,
+  "cells": [
+    750,
+    626,
+    1
+  ],
+  "size_um": [
+    18.0,
+    15.024,
+    1.0
+  ],
+  "courant_factor": 0.99,
+  "courant_number": 0.700035713374682,
+  "dt_s": 5.604162704117249e-17,
+  "steps": 89219,
+  "run_time_ps": 4.999977922986369,
+  "pml_um": 1.008,
+  "pml_cells": 42,
+  "ring": {
+    "center_um": [
+      0.0,
+      0.0
+    ],
+    "outer_radius_um": 5.0,
+    "inner_radius_um": 4.5,
+    "width_um": 0.5,
+    "note": "Ring centre on an Ez node. 5.0/0.024 and 4.5/0.024 are not integers, so no Ez node lies exactly on either circle; TorchFDTD counts boundary nodes as material and Meep does not, and the scripts record the smallest node-to-circle distance."
+  },
+  "bus": {
+    "width_um": 0.5,
+    "center_y_um": -5.304,
+    "gap_um": 0.054,
+    "note": "Bus centre on an Ez node; 0.5/0.024 = 20.83 cells, so both edges fall between nodes and both solvers rasterise the same 21 rows.",
+    "gap_note": "Chosen from a TorchFDTD ring-down sweep at this fixture (loaded Q from the energy decay of a point probe in the ring, 4 ps development runs made before the comparison): gap 0.15 um gives Q about 1e4 and 0.19 um above 1e5 (the 5 um ring has no measurable bend loss at this contrast, so the loaded Q is set by the coupler alone); 0.11 um gives 3500, 0.07 um 1500 (20 nm mesh); 0.054 um gives 950 and 0.03 um 610 (24 nm mesh). 0.054 um is the largest lattice-compatible gap whose loaded Q lies in the declared 500-2000 window and whose amplitude e-fold time Q*lambda/(pi*c) = 1.6 ps fits three times into the 5 ps run."
+  },
+  "source": {
+    "component": "Ez",
+    "x_um": -7.5120000000000005,
+    "center_y_um": -5.304,
+    "width_um": 1.488,
+    "wavelength_um": 1.55,
+    "pulse_cycles": 4.0,
+    "amplitude": 1.0,
+    "waveform": "amplitude*exp(-0.5*((t-4*sigma)/sigma)^2)*sin(2*pi*f0*t), sigma=pulse_cycles/f0, f0=c/wavelength; additive (soft) Ez current on the Ez node column x_cell over the 63 rows [61,124) of the line |y-center_y|<=width/2, whose ends lie on nodes: Meep's restriction of such a line gives weight 1 on rows 62..122 and 0.5 on rows 61 and 123 (checked from the field after one step); TorchFDTD reproduces this with one uniform plane source over rows 62..122 plus two point sources of amplitude 0.5 on rows 61 and 123.",
+    "x_cell": 62,
+    "y_cells": [
+      61,
+      124
+    ],
+    "rows": {
+      "full_weight": [
+        62,
+        123
+      ],
+      "half_weight": [
+        61,
+        123
+      ]
+    },
+    "injection_note": "TorchFDTD adds amplitude*waveform to Ez at each source node after its E update; Meep adds a current J, i.e. E += -dt*J/eps, so the Meep script scales J by the node permittivity (amp_func) to give the same E increment on the 21 core rows and the 42 cladding rows. The overall amplitude and time-step conventions still differ and cancel in the ratio T."
+  },
+  "monitors": {
+    "width_um": 2.0,
+    "in_x_um": -6.0,
+    "out_x_um": 6.0,
+    "center_y_um": -5.304,
+    "in_x_cell": 125,
+    "out_x_cell": 625,
+    "y_cells": [
+      51,
+      134
+    ],
+    "note": "x-normal flux planes across the bus at the Ez node columns in_x_cell/out_x_cell; 83 Ez rows, the plane ends fall between nodes."
+  },
+  "cell_index_note": "cells are half-open [start, stop) indices into the Ez node lattice x_i = i*dx - size_x/2, y_j = j*dx - size_y/2",
+  "spectrum": {
+    "wavelength_start_um": 1.5,
+    "wavelength_stop_um": 1.6,
+    "points": 401,
+    "sampling": "wavelength",
+    "window": "whole run, no apodization"
+  },
+  "normalisation": "T(lambda) = flux_out(ring run) / flux_out(straight-bus run) of the same solver; the in monitor is recorded for reference.",
+  "sampling": "staircase at the Yee Ez nodes (TorchFDTD material_sampling='yee', Meep eps_averaging=False); no symmetry, no subpixel.",
+  "run_time_note": "5 ps = 3.2 amplitude e-fold times of the Q = 950 resonance (field residual 4 percent at the end of the window); 89219 steps is the longest run below TorchFDTD's 100000-step limit at this mesh."
+}

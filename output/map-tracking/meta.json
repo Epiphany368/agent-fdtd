@@ -1,0 +1,19 @@
+{
+  "title": "torchfdtd-platform 现在",
+  "id": "torchfdtd-platform-tracking",
+  "lang": "zh",
+  "use": "project tracking",
+  "level": "L3 详细",
+  "desc": "由 plan.md、STATUS.md、docs/ 下十三份证据与 AGENTS.md 生成；「现在」分支按 2026-10-18 的状态写，主干由主会话亲自写，三条细节分支由只读子代理调研后回源核对。",
+  "root_key": "现在全貌",
+  "now": "现在",
+  "search_hint": "轨道 网格 光源 验证 逆设计 授权 账本 腿",
+  "parts": [
+    "outline-now.md",
+    "outline-A-tracks.md",
+    "outline-B-inverse.md",
+    "outline-C-machinery.md",
+    "outline-Z.md"
+  ],
+  "out": "tracking.html"
+}

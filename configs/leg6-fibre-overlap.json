@@ -1,0 +1,9 @@
+{
+  "kind": "audit",
+  "task": "Leg 6: S2 fibre lateral-overlap readout for cited inputs; no simulation, the inputs are a citation from Marchetti et al. Sci Rep 7, 16670 (2017)",
+  "policy": "leg6-fibre-overlap-v1",
+  "case_id": "fibre-lateral-overlap",
+  "sweep_widths_um": [5, 8, 10, 12, 15, 20, 30, 50, 100],
+  "sweep_waists_um": [2.6, 5.2, 10.4],
+  "sweep_note": "Sensitivity only. The headline is the cited W = 12 and w_lat = 5.2. Nothing in this sweep is the cited device's efficiency."
+}

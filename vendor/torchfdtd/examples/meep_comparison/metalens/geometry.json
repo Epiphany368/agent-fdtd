@@ -1,0 +1,223 @@
+{
+ "name": "metalens",
+ "part": "2d",
+ "units": "um, s",
+ "description": "2D cylindrical metalens: silicon ridges (n = 3.48) in air on a 0.6 um pitch, Ez (out-of-plane) polarisation, plane-wave pulse from below (+y).",
+ "mesh_um": 0.025,
+ "courant_factor": 0.99,
+ "courant_number": 0.700035713374682,
+ "dt_s": 5.837669483455467e-17,
+ "steps": 5200,
+ "run_time_fs": 303.55881313968433,
+ "cell_um": [
+  24.0,
+  21.5
+ ],
+ "pml_cells": 40,
+ "pml_um": 1.0,
+ "background_index": 1.0,
+ "material": {
+  "name": "Si",
+  "index": 3.48
+ },
+ "polarization": "Ez",
+ "aperture_um": 20.0,
+ "focal_length_um": 15.0,
+ "pitch_um": 0.6,
+ "ridge_height_um": 1.0,
+ "ridge_bottom_um": -9.0125,
+ "ridge_top_um": -8.0125,
+ "ridge_y_center_um": -8.5125,
+ "ridges": [
+  {
+   "x_um": -9.6,
+   "width_um": 0.575
+  },
+  {
+   "x_um": -9.0,
+   "width_um": 0.125
+  },
+  {
+   "x_um": -8.4,
+   "width_um": 0.175
+  },
+  {
+   "x_um": -7.8,
+   "width_um": 0.275
+  },
+  {
+   "x_um": -7.2,
+   "width_um": 0.375
+  },
+  {
+   "x_um": -6.6,
+   "width_um": 0.575
+  },
+  {
+   "x_um": -6.0,
+   "width_um": 0.125
+  },
+  {
+   "x_um": -5.4,
+   "width_um": 0.125
+  },
+  {
+   "x_um": -4.8,
+   "width_um": 0.175
+  },
+  {
+   "x_um": -4.2,
+   "width_um": 0.225
+  },
+  {
+   "x_um": -3.6,
+   "width_um": 0.275
+  },
+  {
+   "x_um": -3.0,
+   "width_um": 0.325
+  },
+  {
+   "x_um": -2.4,
+   "width_um": 0.325
+  },
+  {
+   "x_um": -1.8,
+   "width_um": 0.375
+  },
+  {
+   "x_um": -1.2,
+   "width_um": 0.425
+  },
+  {
+   "x_um": -0.6,
+   "width_um": 0.425
+  },
+  {
+   "x_um": 0.0,
+   "width_um": 0.425
+  },
+  {
+   "x_um": 0.6,
+   "width_um": 0.425
+  },
+  {
+   "x_um": 1.2,
+   "width_um": 0.425
+  },
+  {
+   "x_um": 1.8,
+   "width_um": 0.375
+  },
+  {
+   "x_um": 2.4,
+   "width_um": 0.325
+  },
+  {
+   "x_um": 3.0,
+   "width_um": 0.325
+  },
+  {
+   "x_um": 3.6,
+   "width_um": 0.275
+  },
+  {
+   "x_um": 4.2,
+   "width_um": 0.225
+  },
+  {
+   "x_um": 4.8,
+   "width_um": 0.175
+  },
+  {
+   "x_um": 5.4,
+   "width_um": 0.125
+  },
+  {
+   "x_um": 6.0,
+   "width_um": 0.125
+  },
+  {
+   "x_um": 6.6,
+   "width_um": 0.575
+  },
+  {
+   "x_um": 7.2,
+   "width_um": 0.375
+  },
+  {
+   "x_um": 7.8,
+   "width_um": 0.275
+  },
+  {
+   "x_um": 8.4,
+   "width_um": 0.175
+  },
+  {
+   "x_um": 9.0,
+   "width_um": 0.125
+  },
+  {
+   "x_um": 9.6,
+   "width_um": 0.575
+  }
+ ],
+ "source": {
+  "component": "Ez",
+  "y_um": -9.5,
+  "x_span_um": 20.0,
+  "waveform": {
+   "type": "gaussian_cycles",
+   "wavelength_um": 1.55,
+   "pulse_cycles": 3,
+   "amplitude": 1.0
+  },
+  "note": "Sheet over the aperture; the two end nodes carry half amplitude in both solvers (Meep volume-source interpolation)."
+ },
+ "frequencies": {
+  "wavelengths_um": [
+   1.6,
+   1.55,
+   1.5
+  ],
+  "note": "DFT over the full run, no window"
+ },
+ "monitors": {
+  "incident": {
+   "y_um": -7.9,
+   "x_span_um": 20.0,
+   "note": "aperture-wide line 0.1125 um above the ridge tops: incident power from the bare run"
+  },
+  "focal": {
+   "y_um": 5.6,
+   "x_span_um": 22.0,
+   "note": "declared focal plane (node): profile, FWHM, efficiency"
+  },
+  "axis": {
+   "x_um": 0.0,
+   "y_range_um": [
+    -7.9,
+    9.75
+   ],
+   "note": "on-axis intensity versus y: focus location"
+  }
+ },
+ "design": {
+  "file": "design_2d.json",
+  "library_widths_um": [
+   0.075,
+   0.125,
+   0.175,
+   0.225,
+   0.275,
+   0.325,
+   0.375,
+   0.425,
+   0.475,
+   0.525,
+   0.575
+  ],
+  "phase_range_rad": 6.526306695567517,
+  "focal_plane_note": "focal plane = mesh node nearest the on-axis intensity peak of the TorchFDTD design run at 1.55 um"
+ }
+}

@@ -1,0 +1,16 @@
+{
+  "title": "torchfdtd-platform 全貌",
+  "id": "torchfdtd-platform-overview",
+  "lang": "zh",
+  "use": "learning",
+  "level": "L2 Standard",
+  "desc": "由 plan.md、STATUS.md、README.md、AGENTS.md、PROVENANCE.md 与 output/ 下十份证据文件生成；本次实际运行了 CPU 回归测试，并统计了仓库、配置与运行目录的状态。",
+  "search_hint": "网格 光源 验证 逆设计 腿 运行账本 授权",
+  "parts": [
+    "outline-trunk.md",
+    "outline-A-parts.md",
+    "outline-B-method.md",
+    "outline-Z-conclusion.md"
+  ],
+  "out": "overview.html"
+}

@@ -1,0 +1,64 @@
+{
+  "name": "metagrating",
+  "description": "2D beam-deflecting metagrating: silicon ridges on a SiO2 half-space, one period, out-of-plane E (Ez), normal incidence from the substrate.",
+  "period_um": 2.0,
+  "design_wavelength_um": 1.55,
+  "design_order": 1,
+  "design_angle_air_deg": 50.80503257401706,
+  "substrate_index": 1.444,
+  "ridge_index": 3.48,
+  "ridge_height_um": 0.5,
+  "ridges": [
+    {
+      "center_x_um": -0.93,
+      "width_um": 0.08
+    },
+    {
+      "center_x_um": -0.32,
+      "width_um": 0.22
+    }
+  ],
+  "mesh_um": 0.02,
+  "cell_size_um": [
+    2.0,
+    3.64
+  ],
+  "cells": [
+    100,
+    182
+  ],
+  "pml_cells": 20,
+  "courant_number": 0.700035713374682,
+  "steps": 12000,
+  "substrate_top_y_um": 0.01,
+  "source": {
+    "y_um": -1.22,
+    "component": "Ez",
+    "waveform": {
+      "type": "gaussian_cycles",
+      "wavelength_um": 1.55,
+      "pulse_cycles": 3,
+      "amplitude": 1.0
+    }
+  },
+  "monitors": {
+    "reflection_y_um": -0.81,
+    "transmission_y_um": 1.01
+  },
+  "spectrum": {
+    "sampling": "wavelength",
+    "wavelength_start_um": 1.5,
+    "wavelength_stop_um": 1.6,
+    "points": 41
+  },
+  "orders": [
+    -1,
+    0,
+    1
+  ],
+  "notes": [
+    "Ez nodes lie at x = -1 + 0.02 i (i = 0..99) and y = -1.82 + 0.02 j (j = 0..181) in both solvers; Meep places its Yee nodes on even multiples of the mesh from the cell centre, which coincides with TorchFDTD's node grid only for an even cell count on each axis, so the cell holds 182 rows and the substrate top sits at y = 0.01. Every material edge lies midway between nodes (odd multiples of 0.01 um), so both solvers sample the same staircase without an edge tie.",
+    "Source row j = 30 (y = -1.22). The DFT lines lie at pixel centres: reflection at y = -0.81 (between Ez rows 50 and 51), transmission at y = 1.01 (between rows 141 and 142), sampled at the 100 pixel centres x = -0.99 + 0.02 i, so both solvers interpolate Ez from the same four Yee nodes and Hx from the same two. PML occupies rows 0-20 and 162-182.",
+    "The design sweep (design.json) ran with 8000 steps on the earlier 181-row cell (substrate top at y = 0, same ridges, same x nodes); the comparison uses 12000 steps (560 fs)."
+  ]
+}

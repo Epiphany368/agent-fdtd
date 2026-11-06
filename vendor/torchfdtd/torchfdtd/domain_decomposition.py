@@ -1,0 +1,365 @@
+"""Experimental single-domain distributed Yee slabs and their material transpose.
+
+Each process owns only its x slab. Point-to-point row exchanges couple those
+slabs into one problem. This first milestone admits uniform cubic dielectric
+periodic/Bloch initial-value problems, with no CPML or source/monitor framework.
+"""
+from dataclasses import dataclass
+import cmath
+import math
+
+import torch
+import torch.distributed as dist
+
+from .boundaries import CURL_TERMS
+from .differentiable import _split
+
+
+@dataclass(frozen=True)
+class SlabOwnership:
+    rank: int
+    begin: int
+    end: int
+    shape: tuple
+
+
+def distributed_capabilities():
+    """Read-only backend capabilities, without initializing a process group."""
+    available = dist.is_available()
+    return dict(distributed=available, gloo=available and dist.is_gloo_available(),
+        nccl=available and dist.is_nccl_available(), cuda_devices=torch.cuda.device_count())
+
+
+def plan_domain_decomposition(region, world_size, *, backend='gloo', rank_budget_bytes=1024**3, checkpoints=2):
+    """Admit explicit x ownership without allocating material or field arrays."""
+    if isinstance(world_size, bool) or not isinstance(world_size, int) or world_size < 1:
+        raise ValueError('world_size must be a positive integer.')
+    if isinstance(rank_budget_bytes, bool) or not isinstance(rank_budget_bytes, int) or rank_budget_bytes < 1:
+        raise ValueError('rank_budget_bytes must be a positive integer.')
+    if isinstance(checkpoints, bool) or not isinstance(checkpoints, int) or not 0 <= checkpoints <= 32:
+        raise ValueError('checkpoints must be an integer between zero and 32.')
+    if (region.dimension != '3d' or region.mesh_type != 'uniform' or region.mesh_steps is not None
+            or region.interface_method != 'staircase'):
+        raise ValueError('Distributed Yee requires uniform cubic 3D staircase dielectric coefficients.')
+    if any(face.kind not in ('periodic', 'bloch') for axis in range(3) for face in region.boundaries.pair(axis)):
+        raise ValueError('This distributed milestone requires periodic/Bloch boundaries on all axes; CPML and mirrors are unsupported.')
+    if region.run_control.auto_shutoff:
+        raise ValueError('Distributed propagation requires an explicit fixed step count.')
+    shape = tuple(region.shape)
+    if min(shape) < 2 or world_size > shape[0]:
+        raise ValueError('Use at least two cells per global axis and at least one x cell per rank.')
+    capability = distributed_capabilities()
+    if backend not in ('gloo', 'nccl') or not capability.get(backend, False):
+        raise ValueError(f'Requested distributed backend {backend!r} is unavailable or unsupported.')
+    if backend == 'nccl' and capability['cuda_devices'] < 1:
+        raise ValueError('NCCL requires a visible CUDA device on each participating node.')
+    real_item = 8 if region.precision == 'float64' else 4
+    field_item = real_item*(2 if region.complex_fields else 1)
+    ownership, reservations = [], []
+    for rank in range(world_size):
+        begin, end = shape[0]*rank//world_size, shape[0]*(rank+1)//world_size
+        local = (end-begin, *shape[1:])
+        ownership.append(SlabOwnership(rank, begin, end, local))
+        # Fixed replay banks, field/curl temporaries, three-component material
+        # gradients and row send/receive buffers. No factor of time steps.
+        cells, row = math.prod(local), shape[1]*shape[2]
+        reservations.append(((96+2*checkpoints)*3*cells+16*3*row)*field_item+24*cells*real_item+4096)
+    if max(reservations) > rank_budget_bytes:
+        raise ValueError(f'Distributed rank workspace exceeds budget: required={max(reservations)}, budget={rank_budget_bytes}.')
+    return dict(ownership=tuple(ownership), rank_reservation_bytes=tuple(reservations),
+        max_rank_reservation_bytes=max(reservations), global_shape=shape,
+        backend=backend, replicated_global_state=False, halo_rows=1,
+        checkpoint_capacity=checkpoints,
+        storage_scaling='Owned rank volume plus row halos; independent of propagation step count.',
+        exclusions='Caller objectives, optimizer state, process/runtime and communication-backend allocations.')
+
+
+def _replay_cost(length, slots):
+    cost = 0
+    while length > 1:
+        if slots == 0:
+            return cost+length*(length-1)//2
+        middle = _split(length, slots)
+        cost += middle+_replay_cost(length-middle, slots-1)
+        length = middle
+    return cost
+
+
+class _GlobalSum(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, value, group):
+        result = value.detach().clone()
+        dist.all_reduce(result, op=dist.ReduceOp.SUM, group=group)
+        return result
+
+    @staticmethod
+    def backward(ctx, seed):
+        # Each rank backpropagates the same replicated scalar exactly once.
+        # Its owned local objective has seed one, not world_size copies of one.
+        return seed, None
+
+
+class _DistributedPropagation(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, electric, magnetic, epsilon, domain, steps):
+        ctx.save_for_backward(electric, magnetic, epsilon)
+        ctx.domain, ctx.steps = domain, steps
+        e, h = electric, magnetic
+        for _ in range(steps):
+            e, h = domain._advance(e, h, epsilon)
+        return e, h
+
+    @staticmethod
+    def backward(ctx, e_bar, h_bar):
+        domain, steps = ctx.domain, ctx.steps
+        error = 'Distributed propagation supports first-order derivatives only.' if torch.is_grad_enabled() else None
+        try:
+            initial_e, initial_h, epsilon = ctx.saved_tensors
+        except RuntimeError as failure:
+            error = str(failure)
+        # Propagate saved-input version failures to peers before their first
+        # halo exchange, so one mutated rank cannot strand the other ranks.
+        domain._collective_errors(error)
+        e_bar = torch.zeros_like(initial_e) if e_bar is None else e_bar
+        h_bar = torch.zeros_like(initial_h) if h_bar is None else h_bar
+        gradient = torch.zeros_like(epsilon)
+        eps = epsilon[..., None] if epsilon.ndim == 3 else epsilon
+        replayed = live = peak = 0
+
+        def replay(state, begin, end):
+            nonlocal replayed
+            e, h = state
+            for _ in range(begin, end):
+                e, h = domain._advance(e, h, epsilon)
+                replayed += 1
+            return e, h
+
+        def transpose(state):
+            nonlocal e_bar, h_bar
+            curl_h = domain._curl(state[1], forward=False)
+            # C_forward^H = C_backward for unit-modulus Bloch extensions.
+            e_bar = e_bar-domain.courant*domain._curl(h_bar, forward=False)
+            contribution = -domain.courant*(e_bar.conj()*curl_h).real/eps.square()
+            gradient.add_(contribution.sum(-1) if epsilon.ndim == 3 else contribution)
+            h_bar = h_bar+domain.courant*domain._curl(e_bar/eps, forward=True)
+
+        def reverse(begin, end, restart, slots):
+            nonlocal live, peak
+            while end > begin:
+                if end-begin == 1 or slots == 0:
+                    for step in reversed(range(begin, end)):
+                        state = replay(restart, begin, step)
+                        transpose(state)
+                    return
+                middle = begin+_split(end-begin, slots)
+                checkpoint = replay(restart, begin, middle)
+                live += 1
+                peak = max(peak, live)
+                try:
+                    reverse(middle, end, checkpoint, slots-1)
+                finally:
+                    del checkpoint
+                    live -= 1
+                end = middle
+        try:
+            reverse(0, steps, (initial_e, initial_h), domain.checkpoints)
+        finally:
+            reverse = None
+        domain.last_report.update(replayed_steps=replayed, backward_steps=steps, peak_checkpoints=peak)
+        return e_bar, h_bar, gradient, None, None
+
+
+class DistributedYeeDomain:
+    """One owned slab of a single distributed electromagnetic initial-value problem.
+
+    Initialize torch.distributed externally, bind a distinct CUDA device per
+    rank for NCCL, then construct this object on every rank. CPU uses Gloo.
+    All ranks must call propagate, global_sum and backward in the same order.
+    Each rank backpropagates a replicated global_sum objective exactly once.
+
+    Inputs are local E/H tensors and real scalar/diagonal epsilon >= 1. This
+    API neither distributes nor gathers a full-domain tensor. It admits no
+    source histories, CPML, mirrors, ADE, nonuniform metrics or early stopping.
+    Backward uses a fixed number of rank-local checkpoints and bounded binomial
+    replay. An explicit replay-step ceiling rejects pathological schedules.
+    Zero checkpoints has quadratic replay work. No speed claim is made.
+    """
+    def __setattr__(self, name, value):
+        if getattr(self, '_sealed', False) and name != 'last_report':
+            raise AttributeError('Distributed domain configuration is immutable; construct a new domain.')
+        object.__setattr__(self, name, value)
+
+    def __init__(self, region, *, group=None, device='cpu', rank_budget_bytes=1024**3,
+                 checkpoints=2, max_replayed_steps=100000):
+        if not dist.is_available() or not dist.is_initialized():
+            raise RuntimeError('Initialize a torch.distributed process group before creating a distributed domain.')
+        self.group = group
+        self.rank, self.world_size = dist.get_rank(group), dist.get_world_size(group)
+        self.backend = str(dist.get_backend(group))
+        local_error = None
+        try:
+            self.device = torch.device(device)
+            if isinstance(max_replayed_steps, bool) or not isinstance(max_replayed_steps, int) or max_replayed_steps < 1:
+                raise ValueError('max_replayed_steps must be a positive integer.')
+            if self.backend == 'nccl':
+                if self.device.type != 'cuda' or self.device.index is None:
+                    raise ValueError('NCCL domains require an explicit rank-local CUDA device index.')
+                if self.device.index != torch.cuda.current_device():
+                    raise ValueError('Bind torch.cuda.set_device to the rank device before construction.')
+            elif self.device.type != 'cpu':
+                raise ValueError('The Gloo domain contract supports CPU tensors only.')
+            self.plan = plan_domain_decomposition(region, self.world_size,
+                backend=self.backend, rank_budget_bytes=rank_budget_bytes, checkpoints=checkpoints)
+        except (ValueError, RuntimeError, TypeError) as error:
+            local_error = str(error)
+        self._collective_errors(local_error)
+        configuration = (tuple(region.shape), region.precision, region.complex_fields,
+            tuple(region.bloch_phase), float(region.rectangular_courant), float(region.time_step),
+            region.steps, checkpoints, max_replayed_steps)
+        configurations = [None]*self.world_size
+        dist.all_gather_object(configurations, configuration, group=self.group)
+        if any(item != configurations[0] for item in configurations):
+            raise ValueError('All ranks must agree on global shape, precision, phases and time step.')
+        self.ownership = self.plan['ownership'][self.rank]
+        self.shape = self.ownership.shape
+        self.dtype = getattr(torch, region.precision)
+        self.field_dtype = ((torch.complex128 if self.dtype == torch.float64 else torch.complex64)
+                            if region.complex_fields else self.dtype)
+        self.phases = tuple(cmath.exp(1j*angle) if region.complex_fields else 1.
+                            for angle in region.bloch_phase)
+        self.courant = float(region.rectangular_courant)
+        self.time_step = float(region.time_step)
+        self.max_steps = region.steps
+        self.checkpoints = checkpoints
+        self.max_replayed_steps = max_replayed_steps
+        self.rank_budget_bytes = rank_budget_bytes
+        self.last_report = dict(rank=self.rank, world_size=self.world_size,
+            ownership=(self.ownership.begin, self.ownership.end),
+            rank_reservation_bytes=self.plan['rank_reservation_bytes'][self.rank],
+            backend=self.backend, replicated_global_state=False, hardware_scaling_verified=False,
+            replay_policy='bounded binomial checkpoints', checkpoint_capacity=checkpoints,
+            max_replayed_steps=max_replayed_steps, communicated_bytes=0)
+        self._sealed = True
+
+    def _collective_errors(self, local_error):
+        errors = [None]*self.world_size
+        dist.all_gather_object(errors, local_error, group=self.group)
+        failures = [f'rank {rank}: {error}' for rank, error in enumerate(errors) if error is not None]
+        if failures:
+            raise ValueError('Distributed admission failed: '+'; '.join(failures))
+
+    def zero_state(self):
+        """Allocate only this rank's owned electric and magnetic field arrays."""
+        return tuple(torch.zeros((*self.shape, 3), dtype=self.field_dtype, device=self.device) for _ in range(2))
+
+    def _peer(self, rank):
+        return rank if self.group is None else dist.get_global_rank(self.group, rank)
+
+    def _transfer(self, send, destination, source, tag):
+        send = send.contiguous()
+        receive = torch.empty_like(send)
+        send_wire = torch.view_as_real(send) if send.is_complex() else send
+        receive_wire = torch.view_as_real(receive) if receive.is_complex() else receive
+        operations = [dist.P2POp(dist.irecv, receive_wire, self._peer(source), self.group, tag),
+                      dist.P2POp(dist.isend, send_wire, self._peer(destination), self.group, tag)]
+        for work in dist.batch_isend_irecv(operations):
+            work.wait()
+        self.last_report['communicated_bytes'] += 2*send.numel()*send.element_size()
+        return receive
+
+    def exchange_halo(self, field, *, side):
+        """Fetch one adjacent owned row, including the global Bloch winding."""
+        if side not in ('left', 'right'):
+            raise ValueError('Halo side must be left or right.')
+        left, right = (self.rank-1)%self.world_size, (self.rank+1)%self.world_size
+        if side == 'left':
+            value = field[-1:].clone() if self.world_size == 1 else self._transfer(field[-1:], right, left, 0)
+            return value/self.phases[0] if self.rank == 0 else value
+        value = field[:1].clone() if self.world_size == 1 else self._transfer(field[:1], left, right, 1)
+        return value*self.phases[0] if self.rank == self.world_size-1 else value
+
+    def transpose_halo(self, seed, *, side):
+        """Return the owned-row contribution of the Hermitian halo transpose.
+
+        Left-halo seeds accumulate at the returned rank's final owned row.
+        Right-halo seeds accumulate at its first row. The caller owns addition.
+        """
+        if side not in ('left', 'right'):
+            raise ValueError('Halo side must be left or right.')
+        left, right = (self.rank-1)%self.world_size, (self.rank+1)%self.world_size
+        if side == 'left':
+            value = seed*complex(1/self.phases[0]).conjugate() if self.rank == 0 and seed.is_complex() else seed
+            return value.clone() if self.world_size == 1 else self._transfer(value, left, right, 2)
+        value = seed*complex(self.phases[0]).conjugate() if self.rank == self.world_size-1 and seed.is_complex() else seed
+        return value.clone() if self.world_size == 1 else self._transfer(value, right, left, 3)
+
+    def _difference(self, field, axis, forward):
+        if axis == 0:
+            neighbor = self.exchange_halo(field, side='right' if forward else 'left')
+            shifted = torch.cat((field[1:], neighbor), 0) if forward else torch.cat((neighbor, field[:-1]), 0)
+        else:
+            shifted = torch.roll(field, -1 if forward else 1, axis)
+            edge = [slice(None)]*4
+            edge[axis] = -1 if forward else 0
+            shifted[tuple(edge)] *= self.phases[axis] if forward else 1/self.phases[axis]
+        return shifted-field if forward else field-shifted
+
+    def _curl(self, field, *, forward):
+        result = torch.zeros_like(field)
+        for axis in range(3):
+            derivative = self._difference(field, axis, forward)
+            for a, component, out, sign in CURL_TERMS:
+                if a == axis:
+                    result[..., out].add_(derivative[..., component], alpha=sign)
+        return result
+
+    def _advance(self, electric, magnetic, epsilon):
+        eps = epsilon[..., None] if epsilon.ndim == 3 else epsilon
+        electric = electric+self.courant*self._curl(magnetic, forward=False)/eps
+        magnetic = magnetic-self.courant*self._curl(electric, forward=True)
+        return electric, magnetic
+
+    def propagate(self, electric, magnetic, epsilon, *, steps):
+        """Collective rank-local final fields with a bounded first-order VJP."""
+        error = None
+        if isinstance(steps, bool) or not isinstance(steps, int) or not 1 <= steps <= self.max_steps:
+            error = 'steps must be a positive integer no larger than the prepared region step count.'
+        elif any(not isinstance(v, torch.Tensor) or v.device != self.device or v.dtype != self.field_dtype
+                 or tuple(v.shape) != self.shape+(3,) for v in (electric, magnetic)):
+            error = 'Initial fields must match the owned rank shape, field dtype and device.'
+        elif (not isinstance(epsilon, torch.Tensor) or epsilon.device != self.device or epsilon.dtype != self.dtype
+                or tuple(epsilon.shape) not in (self.shape, self.shape+(3,))):
+            error = 'Epsilon must be a rank-local real scalar or diagonal tensor.'
+        elif any(v.layout != torch.strided for v in (electric, magnetic, epsilon)):
+            error = 'Inputs must use dense strided local tensor storage.'
+        elif (torch.is_grad_enabled() and any(v.requires_grad for v in (electric, magnetic, epsilon))
+                and any(torch.is_inference(v) for v in (electric, magnetic, epsilon))):
+            error = 'Differentiated inputs cannot be inference tensors.'
+        elif (not all(bool(torch.isfinite(v).all()) for v in (electric, magnetic, epsilon))
+                or bool((epsilon < 1).any())):
+            error = 'Inputs must be finite and epsilon at least one.'
+        self._collective_errors(error)
+        settings = [None]*self.world_size
+        differentiating = torch.is_grad_enabled() and any(v.requires_grad for v in (electric, magnetic, epsilon))
+        dist.all_gather_object(settings, (steps, epsilon.ndim, differentiating), group=self.group)
+        if any(value != settings[0] for value in settings):
+            raise ValueError('All ranks must agree on steps, material layout and participation in backward.')
+        expected_replay = _replay_cost(steps, self.checkpoints) if differentiating else 0
+        if expected_replay > self.max_replayed_steps:
+            raise ValueError(f'Replay schedule exceeds max_replayed_steps: planned={expected_replay}, limit={self.max_replayed_steps}.')
+        self.last_report.update(forward_steps=steps, backward_steps=0, replayed_steps=0,
+                               planned_replayed_steps=expected_replay, peak_checkpoints=0)
+        return _DistributedPropagation.apply(electric, magnetic, epsilon, self, steps)
+
+    def global_sum(self, local_scalar):
+        """Replicate a summed real objective; every rank then calls backward once."""
+        error = None
+        if (not isinstance(local_scalar, torch.Tensor) or local_scalar.numel() != 1
+                or local_scalar.device != self.device or local_scalar.dtype != self.dtype):
+            error = 'The local objective must be a real scalar on the rank device.'
+        self._collective_errors(error)
+        participation = [None]*self.world_size
+        dist.all_gather_object(participation, local_scalar.requires_grad and torch.is_grad_enabled(), group=self.group)
+        if any(value != participation[0] for value in participation):
+            raise ValueError('Every rank must participate in the objective graph; use a zero-weight field objective on unobserved ranks.')
+        return _GlobalSum.apply(local_scalar, self.group)

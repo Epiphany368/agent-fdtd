@@ -1,0 +1,23 @@
+{
+  "version": "v1.0",
+  "policy": "Platform project. The solver fork is shared and pinned; every run records the commit it used. No absolute path is tracked in this repository: solver roots are repository-relative or come from the environment (PARITY_SOLVER_ROOT, PARITY_SOLVER_UPSTREAM).",
+  "upstream": {
+    "solver_root": "src/torchfdtd_upstream",
+    "solver_commit": "ebcc0f7d1361c29cb478dbd2a478fb4c58654223",
+    "role": "FROZEN PROVENANCE. Never modified, never dirty, never advanced. Every run copies the solver source into runs/<id>/snapshot/, so provenance survives independently of the path."
+  },
+  "solver_root": "src/torchfdtd",
+  "solver_commit_at_split": "ebcc0f7d1361c29cb478dbd2a478fb4c58654223",
+  "fork": {
+    "role": "OUR WORKING SOLVER. It may move. Reproducibility comes from recording, not from forbidding: each run writes the fork commit and the dirty count into its own manifest and snapshot.",
+    "tag_at_split": "fork-point-ebcc0f7"
+  },
+  "python": ".venv/bin/python",
+  "baseline_execution": {
+    "cuda_kernel": "fused",
+    "cuda_monitor_kernel": "torch",
+    "cuda_graph": true,
+    "cuda_graph_steps": 1,
+    "precision": "float32"
+  }
+}

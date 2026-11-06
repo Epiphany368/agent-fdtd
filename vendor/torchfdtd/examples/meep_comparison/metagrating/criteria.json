@@ -1,0 +1,40 @@
+{
+  "declared": "2026-09-22, before the first comparison run; not edited afterwards",
+  "orders": [-1, 0, 1],
+  "design_wavelength_um": 1.55,
+  "band_um": [1.5, 1.6],
+  "band_points": 41,
+  "criteria": {
+    "torchfdtd_vs_meep_order_efficiency": {
+      "statistic": "max over the 41 band wavelengths and over the six propagating orders (T-1, T0, T+1, R-1, R0, R+1) of |eta_torchfdtd - eta_meep|",
+      "limit_abs": 0.01
+    },
+    "torchfdtd_vs_rcwa_order_efficiency": {
+      "statistic": "max over the 41 band wavelengths and the six orders of |eta_torchfdtd - eta_rcwa|",
+      "limit_abs": 0.02
+    },
+    "meep_vs_rcwa_order_efficiency": {
+      "statistic": "max over the 41 band wavelengths and the six orders of |eta_meep - eta_rcwa|",
+      "limit_abs": 0.02
+    },
+    "torchfdtd_energy_balance": {
+      "statistic": "max over the 41 band wavelengths of |sum of the six order efficiencies - 1|",
+      "limit_abs": 0.01
+    },
+    "meep_energy_balance": {
+      "statistic": "max over the 41 band wavelengths of |sum of the six order efficiencies - 1|",
+      "limit_abs": 0.01
+    }
+  },
+  "grid_match": {
+    "cells_per_axis": "equal",
+    "dt_relative": 1e-9,
+    "steps": "equal",
+    "pml_cells": "equal",
+    "geometry_sha256": "equal",
+    "monitor_sample_positions_um_abs": 1e-9
+  },
+  "reference_checks": {
+    "note": "Diagnostics recorded with the comparison, not pass/fail criteria: bare-substrate reference T0/R0 against the Fresnel values, order +-1 power in the reference relative to the incident power, and the backward-branch power at the transmission line of the reference relative to the incident power."
+  }
+}

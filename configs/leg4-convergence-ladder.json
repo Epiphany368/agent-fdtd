@@ -1,0 +1,240 @@
+{
+  "kind": "canary",
+  "task": "Leg 4: the V3 convergence ladder on the two analytic cases, plus a time-step ladder and the coarse-mesh coincidence guard",
+  "policy": "leg4-convergence-v1",
+  "frequency_points": 21,
+  "duration_fs": 260,
+  "core_index": 3.476558727709872,
+  "cladding_index": 1.4440231286977714,
+  "wavelength_um": 1.54925,
+  "precision": "float64",
+  "cases": [
+    {
+      "id": "ladder-interface-ppw20",
+      "kind": "interface",
+      "index": 3.5,
+      "ppw": 20,
+      "duration_fs": 260,
+      "courant_factor": 0.99
+    },
+    {
+      "id": "ladder-interface-ppw40",
+      "kind": "interface",
+      "index": 3.5,
+      "ppw": 40,
+      "duration_fs": 260,
+      "courant_factor": 0.99
+    },
+    {
+      "id": "ladder-interface-ppw80",
+      "kind": "interface",
+      "index": 3.5,
+      "ppw": 80,
+      "duration_fs": 260,
+      "courant_factor": 0.99
+    },
+    {
+      "id": "ladder-interface-ppw160",
+      "kind": "interface",
+      "index": 3.5,
+      "ppw": 160,
+      "duration_fs": 260,
+      "courant_factor": 0.99
+    },
+    {
+      "id": "ladder-slab-ppw20",
+      "kind": "slab",
+      "index": 3.5,
+      "ppw": 20,
+      "duration_fs": 260,
+      "courant_factor": 0.99
+    },
+    {
+      "id": "ladder-slab-ppw40",
+      "kind": "slab",
+      "index": 3.5,
+      "ppw": 40,
+      "duration_fs": 260,
+      "courant_factor": 0.99
+    },
+    {
+      "id": "ladder-slab-ppw80",
+      "kind": "slab",
+      "index": 3.5,
+      "ppw": 80,
+      "duration_fs": 260,
+      "courant_factor": 0.99
+    },
+    {
+      "id": "ladder-slab-ppw160",
+      "kind": "slab",
+      "index": 3.5,
+      "ppw": 160,
+      "duration_fs": 260,
+      "courant_factor": 0.99
+    },
+    {
+      "id": "ladder-interface-ppw40-c050",
+      "kind": "interface",
+      "index": 3.5,
+      "ppw": 40,
+      "duration_fs": 260,
+      "courant_factor": 0.5
+    }
+  ],
+  "analytic_cases": [
+    {
+      "id": "V1-fresnel",
+      "law": "fresnel",
+      "case_id": "ladder-interface-ppw20",
+      "index": 3.5,
+      "tolerance": 0.01,
+      "tolerance_kind": "discretisation-limited floor (inherited)",
+      "basis": "Same inherited threshold as leg 3 (reference project A1 canary, 0.01 absolute). This leg measures what that threshold costs at each resolution; see earned_floor.",
+      "scope_match": true,
+      "scope_match_reason": "Same builder and same normal-incidence configuration as leg 3; only the mesh resolution changes."
+    },
+    {
+      "id": "V1-fresnel",
+      "law": "fresnel",
+      "case_id": "ladder-interface-ppw40",
+      "index": 3.5,
+      "tolerance": 0.01,
+      "tolerance_kind": "discretisation-limited floor (inherited)",
+      "basis": "Same inherited threshold as leg 3 (reference project A1 canary, 0.01 absolute). This leg measures what that threshold costs at each resolution; see earned_floor.",
+      "scope_match": true,
+      "scope_match_reason": "Same builder and same normal-incidence configuration as leg 3; only the mesh resolution changes."
+    },
+    {
+      "id": "V1-fresnel",
+      "law": "fresnel",
+      "case_id": "ladder-interface-ppw80",
+      "index": 3.5,
+      "tolerance": 0.01,
+      "tolerance_kind": "discretisation-limited floor (inherited)",
+      "basis": "Same inherited threshold as leg 3 (reference project A1 canary, 0.01 absolute). This leg measures what that threshold costs at each resolution; see earned_floor.",
+      "scope_match": true,
+      "scope_match_reason": "Same builder and same normal-incidence configuration as leg 3; only the mesh resolution changes."
+    },
+    {
+      "id": "V1-fresnel",
+      "law": "fresnel",
+      "case_id": "ladder-interface-ppw160",
+      "index": 3.5,
+      "tolerance": 0.01,
+      "tolerance_kind": "discretisation-limited floor (inherited)",
+      "basis": "Same inherited threshold as leg 3 (reference project A1 canary, 0.01 absolute). This leg measures what that threshold costs at each resolution; see earned_floor.",
+      "scope_match": true,
+      "scope_match_reason": "Same builder and same normal-incidence configuration as leg 3; only the mesh resolution changes."
+    },
+    {
+      "id": "V1-airy",
+      "law": "airy",
+      "case_id": "ladder-slab-ppw20",
+      "index": 3.5,
+      "tolerance": 0.01,
+      "tolerance_kind": "discretisation-limited floor (inherited)",
+      "basis": "Same inherited threshold as leg 3 (reference project A1 canary, 0.01 absolute). This leg measures what that threshold costs at each resolution; see earned_floor.",
+      "scope_match": true,
+      "scope_match_reason": "Same builder and same normal-incidence configuration as leg 3; only the mesh resolution changes."
+    },
+    {
+      "id": "V1-airy",
+      "law": "airy",
+      "case_id": "ladder-slab-ppw40",
+      "index": 3.5,
+      "tolerance": 0.01,
+      "tolerance_kind": "discretisation-limited floor (inherited)",
+      "basis": "Same inherited threshold as leg 3 (reference project A1 canary, 0.01 absolute). This leg measures what that threshold costs at each resolution; see earned_floor.",
+      "scope_match": true,
+      "scope_match_reason": "Same builder and same normal-incidence configuration as leg 3; only the mesh resolution changes."
+    },
+    {
+      "id": "V1-airy",
+      "law": "airy",
+      "case_id": "ladder-slab-ppw80",
+      "index": 3.5,
+      "tolerance": 0.01,
+      "tolerance_kind": "discretisation-limited floor (inherited)",
+      "basis": "Same inherited threshold as leg 3 (reference project A1 canary, 0.01 absolute). This leg measures what that threshold costs at each resolution; see earned_floor.",
+      "scope_match": true,
+      "scope_match_reason": "Same builder and same normal-incidence configuration as leg 3; only the mesh resolution changes."
+    },
+    {
+      "id": "V1-airy",
+      "law": "airy",
+      "case_id": "ladder-slab-ppw160",
+      "index": 3.5,
+      "tolerance": 0.01,
+      "tolerance_kind": "discretisation-limited floor (inherited)",
+      "basis": "Same inherited threshold as leg 3 (reference project A1 canary, 0.01 absolute). This leg measures what that threshold costs at each resolution; see earned_floor.",
+      "scope_match": true,
+      "scope_match_reason": "Same builder and same normal-incidence configuration as leg 3; only the mesh resolution changes."
+    },
+    {
+      "id": "V1-fresnel",
+      "law": "fresnel",
+      "case_id": "ladder-interface-ppw40-c050",
+      "index": 3.5,
+      "tolerance": 0.01,
+      "tolerance_kind": "discretisation-limited floor (inherited)",
+      "basis": "Same inherited threshold as leg 3. This rung exists only to test insensitivity to the time step, not to measure mesh convergence.",
+      "scope_match": true,
+      "scope_match_reason": "Identical configuration to ladder-interface-ppw40; only Region.courant_factor changes, with Region.steps recomputed so the physical duration is unchanged."
+    }
+  ],
+  "ladders": [
+    {
+      "id": "V3-interface",
+      "case_ids": [
+        "ladder-interface-ppw20",
+        "ladder-interface-ppw40",
+        "ladder-interface-ppw80",
+        "ladder-interface-ppw160"
+      ],
+      "ppw": [
+        20,
+        40,
+        80,
+        160
+      ],
+      "refinement": 2.0,
+      "tolerance": 0.01,
+      "coarse_rungs": 1,
+      "reason": "Meshed convergence of the single-interface case against the exact Fresnel law."
+    },
+    {
+      "id": "V3-slab",
+      "case_ids": [
+        "ladder-slab-ppw20",
+        "ladder-slab-ppw40",
+        "ladder-slab-ppw80",
+        "ladder-slab-ppw160"
+      ],
+      "ppw": [
+        20,
+        40,
+        80,
+        160
+      ],
+      "refinement": 2.0,
+      "tolerance": 0.01,
+      "coarse_rungs": 1,
+      "reason": "Meshed convergence of the single-slab case against the exact Airy law."
+    }
+  ],
+  "dt_ladder": {
+    "id": "V3-dt-interface",
+    "case_ids": [
+      "ladder-interface-ppw40",
+      "ladder-interface-ppw40-c050"
+    ],
+    "courant_factors": [
+      0.99,
+      0.5
+    ],
+    "reason": "The same case at two time steps, with the physical duration held fixed, to show that the answer is insensitive to the time step."
+  },
+  "inherited_tolerance": 0.01,
+  "registered_ppw": 40
+}

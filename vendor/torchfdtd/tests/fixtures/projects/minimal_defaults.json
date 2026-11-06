@@ -1,0 +1,6 @@
+{
+  "name": "Hand-written minimal scene",
+  "structures": [{"name": "core", "size": [8, 0.65, 0.4]}],
+  "sources": [{"center": [-2.5, 0, 0], "wavelength": 1.55}],
+  "monitors": [{"name": "output", "center": [2, 0, 0]}]
+}

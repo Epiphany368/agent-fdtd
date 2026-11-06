@@ -1,0 +1,11 @@
+# Runtime dependencies of the platform itself.
+# The solver (torchfdtd) is a separate project; install it from its own source and point
+# this platform at it with tools/bootstrap_solver.sh.
+#
+# Versions are the ones this release was verified against (2026-10-21). Lower bounds are
+# deliberately loose; the upper bound on torch is absent because no incompatibility is known,
+# which is a statement about evidence, not a promise.
+torch>=2.6
+numpy>=2.0
+scipy>=1.14
+matplotlib>=3.8

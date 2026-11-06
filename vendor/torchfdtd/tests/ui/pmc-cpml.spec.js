@@ -1,0 +1,37 @@
+import {test,expect} from '@playwright/test';
+
+test('endpoint CPML profile is explicit and mixed CPU job retains effective metadata',async({page})=>{
+ const p=await (await page.request.get('/api/examples/pmc')).json();
+ p.region={...p.region,backend:'cpu',size:[1.6,.6,.6],mesh:.1,steps:20,pml_cells:3,snapshot_interval:5};
+ p.structures=[];p.sources=[{id:'e',name:'Interior electric source',kind:'point',component:'Ez',center:[0,0,0],pulse:'continuous'}];
+ p.monitors=[{id:'m',name:'Interior monitor',kind:'point',component:'Ez',center:[.1,0,0]}];
+ await page.addInitScript(p=>{localStorage.setItem('torchfdtd.project.v1',JSON.stringify(p));localStorage.removeItem('torchfdtd.activeJob');},p);
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.goto('/');await expect(page.locator('#tree')).toContainText('Interior monitor');
+ await page.getByRole('button',{name:'Edit six faces together',exact:true}).click();
+ const dialog=page.locator('.boundary-dialog');
+ for(const side of ['min','max'])await dialog.getByLabel('x '+side+' boundary',{exact:true}).selectOption('pml');
+ await dialog.getByRole('button',{name:'Apply boundaries',exact:true}).click();
+ await expect(dialog.getByRole('status')).toContainText('alpha');
+ const before=await page.evaluate(()=>localStorage.getItem('torchfdtd.project.v1'));
+ await dialog.getByRole('button',{name:'Set supported endpoint CPML profile',exact:true}).click();
+ await expect(dialog.getByRole('status')).toContainText('2 selected PML faces');
+ await dialog.getByLabel('y min boundary',{exact:true}).selectOption('periodic');
+ await dialog.getByRole('button',{name:'Apply boundaries',exact:true}).click();
+ await expect(dialog).toBeVisible();
+ expect(await page.evaluate(()=>localStorage.getItem('torchfdtd.project.v1'))).toBe(before);
+ await dialog.getByLabel('y min boundary',{exact:true}).selectOption('pmc');
+ await dialog.getByRole('button',{name:'Apply boundaries',exact:true}).click();
+ await expect(dialog).not.toBeVisible();
+ const submitted=page.waitForResponse(r=>r.url().endsWith('/api/jobs')&&r.request().method()==='POST');
+ await page.locator('#run-button').click();const id=(await (await submitted).json()).id;
+ await expect(page.locator('#mode-badge')).toHaveText('ANALYSIS',{timeout:30000});
+ const job=await (await page.request.get('/api/jobs/'+id)).json();
+ expect(job.status).toBe('completed');expect(job.summary.backend).toBe('cpu');
+ expect(job.summary.engine).toContain('/CPML');
+ expect(job.summary.endpoint_plan.cpml.alpha).toBe(0);
+ expect(job.summary.endpoint_plan.memory.psi_state_bytes).toBeGreaterThan(0);
+ expect(job.monitors[0].signal.some(x=>Math.abs(x)>1e-12)).toBeTruthy();
+ await page.screenshot({path:'.local/endpoint-ui/completed.png',fullPage:true});
+ expect(errors).toEqual([]);
+});

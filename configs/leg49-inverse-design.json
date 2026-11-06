@@ -1,0 +1,20 @@
+{
+  "task": "Wave D LEG 49 Track I Inverse Design Loop: d(eps)/d(rho) Jacobian & Grating Optimization with Step-by-Step Notary",
+  "kind": "benchmark",
+  "inverse_design": true,
+  "wavelength_um": 1.55,
+  "iterations": 3,
+  "mesh_um": 0.050,
+  "steps": 1000,
+  "min_feature_um": 0.150,
+  "filter_radius_um": 0.150,
+  "gradient_tolerance": 1e-06,
+  "learning_rate": 0.05,
+  "optimizer": "adam",
+  "tags": [
+    "inverse_design",
+    "inverse_design_step",
+    "verified:analytic_jacobian",
+    "verified:m3_fabrication_compliant"
+  ]
+}

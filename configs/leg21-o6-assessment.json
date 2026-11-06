@@ -1,0 +1,238 @@
+{
+  "schema_version": 1,
+  "leg": 21,
+  "track_item": "O6: timestep and update operators, higher-order spatial operators",
+  "fork_commit": "ad436c9",
+  "implementation_authorized": false,
+  "acceptance_kind": "new",
+  "gate": "docs only, no run",
+  "scope": {
+    "fork_access": "git -C $SOLVER_FORK show ad436c9:<path> only; status --porcelain is the requested metadata-only hygiene comparison",
+    "simulation_run": false,
+    "solver_import": false,
+    "gpu_tokens": 0,
+    "ledger_rows": 0,
+    "write_set": [
+      "configs/leg21-o6-assessment.json",
+      "checks/test_leg21_o6_assessment.py",
+      "docs/leg21-2026-10-19.md"
+    ]
+  },
+  "interpretation": "Assess a spatial derivative with nonzero couplings beyond the current nearest-neighbour Yee curl, retaining leapfrog time integration unless separately scoped. Source lines establish current contracts; breakage and repair are conditional deductions, not measured failures of an implemented candidate. Higher spatial order does not imply a nonuniform mesh or abandoning Yee staggering.",
+  "invariants": [
+    {
+      "id": "modal-operator-match",
+      "category": "modal_launch",
+      "current_invariant": "Transverse mode differences and the longitudinal dispersion conversion describe the same nearest-neighbour uniform Yee operator as propagation.",
+      "break_condition": "Replacing the propagation derivative while retaining the transverse two-point matrices or beta = 2*arcsin(beta_tilde*h/2)/h generally makes the launched profile fail the new discrete Maxwell eigenproblem. The uniform/real/Yee guard alone neither detects nor proves this mismatch.",
+      "evidence_kind": "source-backed conditional deduction",
+      "citations": [
+        {"commit": "ad436c9", "path": "torchfdtd/mode_branches.py", "line": 131, "must_contain": "mesh_type != 'uniform'"},
+        {"commit": "ad436c9", "path": "torchfdtd/mode_branches.py", "line": 181, "must_contain": "beta = 2*np.arcsin(ratio)/h"},
+        {"commit": "ad436c9", "path": "torchfdtd/mode_ports.py", "line": 22, "must_contain": "(np.r_[rows, rows], np.r_[rows, (rows+1)%n])"},
+        {"commit": "ad436c9", "path": "torchfdtd/mode_ports.py", "line": 221, "must_contain": "up,um = _difference(shape[0],spacing_um[0],dtype)"}
+      ],
+      "repair_cost": {
+        "work_items": [
+          "Specify the derivative coefficients, staggering, periodic closure and longitudinal symbol as one contract shared by propagation and both modal solvers.",
+          "Replace transverse difference matrices and longitudinal inverse-symbol/propagation-band checks in the mode preparation paths; preserve the existing temporal sine mapping only if leapfrog stays unchanged.",
+          "Recompute mode profiles, phase constants, normalisation and straight-guide calibration identities; include the operator choice in signatures before any reuse."
+        ],
+        "surfaces": ["torchfdtd/mode_ports.py", "torchfdtd/mode_branches.py", "torchfdtd/mode_injection.py", "torchfdtd/invariant_modes.py"],
+        "validation": "Eigen-equation residuals for existing source-derived homogeneous and guide fixtures, then phase and modal-power agreement with an independently refined reference.",
+        "estimate_basis": "Required code surfaces and validation products; no measured development time."
+      },
+      "falsification_route": {
+        "procedure": "Within next_scope, algebraically insert the existing modal fields and beta into the named candidate's discrete frequency-domain Maxwell equations, including its longitudinal symbol, at every frequency to be claimed; no solver implementation or run is needed for this residual test.",
+        "observation_that_refutes_breakage": "The unchanged mode fields and beta satisfy those equations within an independently registered residual tolerance and retain the required normalisation across the claimed band.",
+        "limit": "Exercisable by algebra within next_scope once the candidate and residual tolerance are specified; neither is supplied here. A zero-wavevector or isolated accidental match only refutes breakage for that case; uniform mesh acceptance is not this test."
+      }
+    },
+    {
+      "id": "modal-sheet-support",
+      "category": "modal_launch",
+      "current_invariant": "Equivalent electric and magnetic currents are placed on one longitudinal E sheet and one H sheet, with a one-cell aperture edge ring and fixed two-cell CPML clearance.",
+      "break_condition": "A wider derivative couples across the launch cut on more rows, and can see beyond the tested aperture ring or clearance. Keeping the old sheet amplitudes and support omits nonzero cut-crossing terms unless those terms vanish for the selected fields.",
+      "evidence_kind": "source-backed conditional deduction",
+      "citations": [
+        {"commit": "ad436c9", "path": "torchfdtd/mode_branches.py", "line": 155, "must_contain": "k < 2 or k+2 >= len(nodes)"},
+        {"commit": "ad436c9", "path": "torchfdtd/mode_branches.py", "line": 189, "must_contain": "slice(0, 1)"},
+        {"commit": "ad436c9", "path": "torchfdtd/mode_branches.py", "line": 210, "must_contain": "loc_e[w] = slice(k, k+1)"},
+        {"commit": "ad436c9", "path": "torchfdtd/mode_branches.py", "line": 212, "must_contain": "loc_h[w] = slice(hat, hat+1)"},
+        {"commit": "ad436c9", "path": "torchfdtd/mode_branches.py", "line": 218, "must_contain": "electric = -d*courant*sign*fields"}
+      ],
+      "repair_cost": {
+        "work_items": [
+          "Derive equivalent currents from the commutator of the candidate curl with the launch-side mask, keeping the E/H half-step timing.",
+          "Allocate all nonzero cut-crossing source sheets, widen the aperture confinement ring and source/CPML clearance from actual stencil reach, and update source-byte admission.",
+          "Revalidate detector phase/collocation and reference calibration rather than using cancellation in a normalised ratio as proof of a correct source."
+        ],
+        "surfaces": ["torchfdtd/mode_branches.py", "torchfdtd/mode_injection.py"],
+        "validation": "Compare the full commutator-current support and amplitudes with the old packet; measure backward leakage and power balance separately from calibrated transmission in any later authorised propagation test.",
+        "estimate_basis": "Source-sheet count grows with the nonzero cut-crossing couplings, not automatically with field-volume size; no byte or wall-time measurement."
+      },
+      "falsification_route": {
+        "procedure": "Within next_scope, algebraically apply the specified discrete curl to a masked incident eigenfield and subtract the masked uncut curl, then compare this required forcing with the unchanged source packet at its existing E/H times.",
+        "observation_that_refutes_breakage": "All omitted rows are zero and the existing sheet amplitudes equal the required forcing within a predeclared residual tolerance; any later leakage test also meets its separately registered baseline.",
+        "limit": "The support/amplitude identity is exercisable by algebra within next_scope once a candidate is named; leakage and power-balance observations need a separately authorised implementation and run. The identity can hold for a specially vanishing field or a retained second-order launch collar; a collar introduces a separate interface to assess."
+      }
+    },
+    {
+      "id": "cpml-derivative-closure",
+      "category": "cpml_update",
+      "current_invariant": "CPML (convolutional perfectly matched layer) filters the same two-point derivative used by the bulk curl, on derivative-target slices whose end rows and wrapping assume one neighbour.",
+      "break_condition": "Widening only the interior curl leaves a different derivative at CPML and end rows. Stretching coefficients vary in space, so assuming a wider difference commutes with the local stretch is not justified. Existing recurrence and one memory per target derivative may survive; extra memories are not established as necessary.",
+      "evidence_kind": "source-backed conditional deduction",
+      "citations": [
+        {"commit": "ad436c9", "path": "torchfdtd/boundaries.py", "line": 318, "must_contain": "active_start, active_stop = (0, n-1) if forward else (1, n)"},
+        {"commit": "ad436c9", "path": "torchfdtd/boundaries.py", "line": 382, "must_contain": "derivative = field[high] - field[low]"},
+        {"commit": "ad436c9", "path": "torchfdtd/boundaries.py", "line": 389, "must_contain": "psi += segment['c'] * data"},
+        {"commit": "ad436c9", "path": "torchfdtd/boundaries.py", "line": 397, "must_contain": "edge = phase*field[first] - field[last]"},
+        {"commit": "ad436c9", "path": "torchfdtd/cuda_kernels.py", "line": 201, "must_contain": "memory = {psi}[p]*{b}[q] + {c}[q]*d"}
+      ],
+      "repair_cost": {
+        "work_items": [
+          "Define whether the stretched derivative filters the complete wide-stencil difference at each target; derive the matching entrance, corner and outer-boundary closure.",
+          "Provide all required halo samples, phase wraps and physical-wall closures; reassess PML thickness in physical length after coarsening.",
+          "Make reference and fused kernels apply identical derivative/filter ordering; test reflection and late-time stability with the source spectrum and geometry taken from registered fixtures."
+        ],
+        "surfaces": ["torchfdtd/boundaries.py", "torchfdtd/cuda_kernels.py"],
+        "validation": "Small augmented field-plus-memory amplification operator, then reflection versus independently thickened layers and late-time decay; a bulk dispersion test alone cannot validate CPML.",
+        "estimate_basis": "At least one closure derivation and matching reference/fused implementations; memory expansion is unknown until that derivation."
+      },
+      "falsification_route": {
+        "procedure": "Within next_scope, algebraically assemble the specified wide derivative's stretched target operator with the existing CPML recurrence/layout, including entrance and terminal rows; compare with the derived stretched equations and analyse the augmented amplification operator. Reflection and late-time decay measurements require a separately authorised implementation and run.",
+        "observation_that_refutes_breakage": "Algebra shows that the existing recurrence/layout gives the required operator on every row, needs no unavailable halo and meets the registered amplification condition. Refuting the reflection/decay concern additionally requires a separately authorised run meeting independently registered accuracy criteria.",
+        "limit": "Closure and amplification can be assessed algebraically within next_scope once a candidate is named; measured reflection cannot. These results would refute the need to redesign CPML state, not the need to replace the two-point derivative; no such candidate was tested here."
+      }
+    },
+    {
+      "id": "yee-material-interface-accuracy",
+      "category": "yee_material_sampling",
+      "current_invariant": "Geometry is independently point-sampled at Ex, Ey and Ez Yee locations and applied as a local inverse-permittivity multiplier. Modal and propagation material samples must describe the same discrete guide.",
+      "break_condition": "Higher formal order in a smooth bulk does not establish higher order across a discontinuous staircase interface. At twice the spacing, point membership can change or remove a feature; widening the curl alone repairs neither geometry nor modal/material agreement. The staggered locations and positive local material multiplier need not break.",
+      "evidence_kind": "source-backed conditional deduction",
+      "citations": [
+        {"commit": "ad436c9", "path": "torchfdtd/solver.py", "line": 40, "must_contain": "offsets = [("},
+        {"commit": "ad436c9", "path": "torchfdtd/solver.py", "line": 58, "must_contain": "for component in ('Ex','Ey','Ez')"},
+        {"commit": "ad436c9", "path": "torchfdtd/solver.py", "line": 107, "must_contain": "eps[slices][mask] = epsilon"},
+        {"commit": "ad436c9", "path": "torchfdtd/boundaries.py", "line": 427, "must_contain": "self.inverse_permittivity * curl"},
+        {"commit": "ad436c9", "path": "torchfdtd/mode_ports.py", "line": 207, "must_contain": "for offsets in ((.5,0.),(0.,.5),(0.,0.))"}
+      ],
+      "repair_cost": {
+        "work_items": [
+          "Compare component-wise material ownership and resolved features on the existing reference mesh and its candidate coarse mesh, using only sourced geometry.",
+          "Either restrict the initial claim to homogeneous/smooth material or derive and verify an interface-aware closure/local refinement; do not assume the existing subpixel option supplies a high-order interface scheme.",
+          "Keep the mode solver and bulk material operator identical and retain a positive energy-compatible material update; check interface flux and the actual objective under refinement."
+        ],
+        "surfaces": ["torchfdtd/solver.py", "torchfdtd/mode_ports.py", "torchfdtd/boundaries.py"],
+        "validation": "Separate smooth-medium dispersion from interface/geometry convergence; equal error must be shown for the claimed output, not inferred from formal stencil order.",
+        "estimate_basis": "One material/ownership comparison and an explicit interface scope decision precede any repair estimate; a new interface treatment is a separate design cost."
+      },
+      "falsification_route": {
+        "procedure": "Before implementation, next_scope can only refute this output-accuracy concern through a cited published equal-output-error result for the named candidate and claimed interface scope. No such result is supplied here. A project comparison instead requires a separately authorised candidate implementation and run, with exact sourced fixtures, output/flux tolerances and a refined reference registered beforehand; none is named or registered in this assessment.",
+        "observation_that_refutes_breakage": "A cited published comparison within the claimed interface scope, or a later separately authorised project comparison, establishes that no relevant feature is lost, modal and bulk samples agree, and unchanged point sampling attains the required output accuracy at twice the spacing without an interface repair.",
+        "limit": "Not exercisable by algebra within next_scope: ownership checks alone do not establish output accuracy. Before implementation only applicable published evidence can refute this concern; otherwise it remains unresolved pending separately authorised implementation and measurement. Homogeneous or exactly aligned examples do not establish the result for arbitrary device interfaces."
+      }
+    },
+    {
+      "id": "operator-specific-time-bound",
+      "category": "time_step_bound",
+      "current_invariant": "The allowed time step uses the nearest-neighbour Yee bound, with nominal or realised minimum spacing per active axis; overrides are compared with that same bound.",
+      "break_condition": "A candidate with a larger maximum spatial frequency may have a smaller stable leapfrog step than this spacing-only rule admits. Existing safety margin may suffice for some candidates; a violation is conditional on the actual operator spectrum, not on order alone.",
+      "evidence_kind": "source-backed conditional deduction",
+      "citations": [
+        {"commit": "ad436c9", "path": "torchfdtd/models.py", "line": 449, "must_contain": "math.sqrt(sum(1/h**2 for h in steps))"},
+        {"commit": "ad436c9", "path": "torchfdtd/models.py", "line": 451, "must_contain": "math.sqrt(2 if self.dimension == '2d' else 3)"},
+        {"commit": "ad436c9", "path": "torchfdtd/models.py", "line": 484, "must_contain": "self.time_step_override>self.cfl_time_step*(1+1e-12)"}
+      ],
+      "repair_cost": {
+        "work_items": [
+          "Bound the maximum eigenfrequency of the actual spatial/material operator and derive its leapfrog limit, including the chosen boundary closure.",
+          "Make admission and override validation operator-specific while preserving the default path; do not transfer the realised-minimum Yee proof to a wider operator without a new bound.",
+          "Include CPML auxiliary states in a separate amplification/stability assessment and recompute time-dependent source, material and calibration data for any changed step."
+        ],
+        "surfaces": ["torchfdtd/models.py", "torchfdtd/boundaries.py"],
+        "validation": "For a lossless energy-compatible periodic system, verify dt*omega_max < 2 with a registered safety margin; separately check the augmented CPML update and boundary transients.",
+        "estimate_basis": "One spectral bound per supported operator/closure family plus admission and override checks; no new stable step measured."
+      },
+      "falsification_route": {
+        "procedure": "Within next_scope, algebraically compute or rigorously bound the named candidate's highest eigenfrequency at the existing admitted step, then analyse the field-plus-CPML amplification operator for the supported boundary cases.",
+        "observation_that_refutes_breakage": "All admitted configurations satisfy the new spectral limit with the required margin, and the augmented boundary update satisfies its separate stability condition, so no tighter admission bound is needed for that scope.",
+        "limit": "The spectral and amplification conditions are exercisable by algebra within next_scope once a candidate and its boundary closure are named. Any later transient measurement requires a separately authorised implementation and run; a smooth low-frequency pulse surviving briefly does not test the highest-frequency limit."
+      }
+    }
+  ],
+  "cross_cutting_cost": {
+    "description": "A production option must preserve forward/adjoint consistency and backend agreement; changing just one reference curl is insufficient for inverse design.",
+    "citations": [
+      {"commit": "ad436c9", "path": "torchfdtd/differentiable.py", "line": 340, "must_contain": "derivative=src[_slice(axis,slice(1,n))]-src[_slice(axis,slice(0,n-1))]"},
+      {"commit": "ad436c9", "path": "torchfdtd/differentiable.py", "line": 394, "must_contain": "src[_slice(axis,slice(1,n))]+=derivative"}
+    ],
+    "required_work": [
+      "Inventory every enabled execution path before claiming support; explicitly refuse unsupported streamed, reversible, complex, dispersive or wall-boundary combinations rather than silently falling back.",
+      "Implement the exact transpose of all supported new curl, source and CPML operations; verify dot-product identities and independent objective finite differences.",
+      "Update halo/workspace/admission accounting and include operator identity in cache/checkpoint contracts; reverify the default against the frozen solver before any later fork leg is accepted."
+    ],
+    "estimate_basis": "Dependency inventory, not an exhaustive enumeration of all backend files or a development-time quote."
+  },
+  "dropped_invariants": [
+    {"claim": "A higher-order operator necessarily violates mesh_type == uniform.", "reason": "False implication: uniform spacing and derivative order are independent. The required line 131 citation is a guard, not an order test."},
+    {"claim": "Yee staggering or local positive material sampling must be abandoned.", "reason": "Not established. A wider staggered derivative can retain the same sample locations; interface accuracy is the narrower falsifiable risk retained above."},
+    {"claim": "CPML necessarily needs one additional memory per stencil tap.", "reason": "Not established. A single target-memory filter may act on the complete derivative; only a derived stretched operator can settle the state count."},
+    {"claim": "The stencil inevitably makes modal launch or CPML impossible.", "reason": "No falsifiable universal impossibility argument exists here. Operator-consistent modes, distributed currents or a validated collar are possible repair routes."}
+  ],
+  "cost_benefit": {
+    "headline_claim": {
+      "text": "<= 8x at 2x coarser spacing",
+      "provenance": "unverified",
+      "origin": "plan.md O6 row and LEG 21 registration; no primary equal-accuracy benchmark supplied",
+      "interpretation": "Reading the headline as fewer cells is an interpretation, not part of the quoted registration or a sourced identification of what the factor measures. Under that reading, the 3-D cell-count factor is conditional geometric arithmetic. Equal accuracy at twice the spacing, actual memory reduction and speedup remain unverified."
+    },
+    "geometric_arithmetic": {
+      "provenance": "arithmetic only",
+      "coarsening_per_active_axis": 2,
+      "cell_reduction_2d": 4,
+      "cell_reduction_3d": 8,
+      "derivation": "For fixed physical extents, N = product(L_i/h_i). Doubling h_i on d active axes divides the ideal interior cell count by 2**d. Integer rounding, fixed physical PML thickness, fine collars and unchanged feature resolution alter the realised count.",
+      "equal_accuracy_established": false
+    },
+    "conditional_runtime_model": {
+      "symbols": {
+        "d": "number of active spatial axes, 2 or 3",
+        "q": "candidate maximum lossless eigenfrequency divided by Yee maximum eigenfrequency at the same spacing in the same homogeneous medium, assuming fixed coefficients and a scale-invariant uniform stencil",
+        "w": "candidate time per cell-step relative to Yee for the admitted backend, measured rather than assumed",
+        "m": "candidate stored bytes per interior cell relative to Yee"
+      },
+      "time_step_ratio_at_twice_spacing": "2/q, only if both schemes use the same fractional stability margin and are limited by the lossless bulk spectrum",
+      "ideal_runtime_speedup": "2**(d+1)/(q*w), assuming equal physical duration and neglecting setup, boundaries and calibration",
+      "ideal_interior_memory_reduction": "2**d/m; total peak includes boundary states, halos, sources, planning and checkpoints",
+      "provenance": "conditional arithmetic, not a benchmark"
+    },
+    "benefit": "Potentially fewer interior field cells and fewer steps for smooth, dispersion-limited cases; no measured equal-error saving for this platform.",
+    "cost": "Five coupled contract repairs or validations, plus backend/adjoint coverage. Interfaces, launch support, boundary closure and the spectral step can consume or remove the nominal saving.",
+    "unknowns": [
+      "No candidate coefficients/order, boundary closure or operator spectrum have been registered.",
+      "No sourced equal-error comparison demonstrates that twice the spacing preserves the platform output.",
+      "No measured work multiplier, memory multiplier, development duration or hardware speedup is available.",
+      "No claim is made about vendor higher-order semantics or a production-ready high-order material interface."
+    ]
+  },
+  "recommendation": "further-scoping",
+  "recommendation_rationale": "Worth one bounded algebraic/evidence scoping step, not worth registering a production implementation from the unverified cell-count claim. Several current assumptions are repairable, and two advertised breakages are not universal. Close O6 as assessed, with implementation and efficiency claims still unproven.",
+  "ranked_options": [
+    {"rank": 1, "option": "further-scoping", "tradeoff": "Resolve candidate symbol, cut-current support, boundary closure and equal-error evidence before buying the coupled production work."},
+    {"rank": 2, "option": "decline", "tradeoff": "Protect the forward/verification/inverse critical path, but leave potential smooth-medium savings unexplored."},
+    {"rank": 3, "option": "register-implementation-candidate", "tradeoff": "Start the multi-surface engineering now, accepting that accuracy, time-step and boundary evidence may erase the cell saving."}
+  ],
+  "next_scope": {
+    "authorized_by_this_record": false,
+    "deliverables": [
+      "Name a published candidate operator and its supported material/boundary scope, without inventing physical inputs.",
+      "On paper or in an isolated algebraic model, derive the modal residual, commutator-current support, CPML closure and spectral step; no solver-fork implementation is implied.",
+      "Attach a source-backed equal-error comparison or identify the exact existing fixtures and predeclare output tolerances for a later separately authorised comparison."
+    ],
+    "decision_rule": "Register an implementation candidate only after all five invariants have a repair or demonstrated non-breakage, and a source-backed or separately authorised measured equal-output-error comparison yields both runtime and peak-memory benefit after boundary, source and timestep costs. Before implementation, the interface-accuracy concern can only be refuted by an applicable cited published result. Producing project evidence requires separate authorisation for the candidate implementation and run, with exact fixtures and tolerances registered first; this record grants none. If either benefit disappears for the intended scope, decline that scope. If those inputs remain missing after this bounded evidence package, retain decline-for-production rather than extending scoping indefinitely. No numerical threshold or physical test input is invented here."
+  },
+  "unresolved_citations": []
+}

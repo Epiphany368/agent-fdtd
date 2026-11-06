@@ -1,0 +1,54 @@
+import {test,expect} from '@playwright/test';
+
+test('Auto names its tier, approximate tiling needs consent and disk is an opt-in',async({page})=>{
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.goto('/');await expect(page.locator('#tree')).toContainText('waveguide');
+ await page.locator('[data-example="3d"]').click();
+ await expect(page.getByLabel('dimension',{exact:true})).toHaveValue('3d');
+ const gpu=page.getByLabel('GPU',{exact:true});
+ if(await gpu.isEnabled())await gpu.uncheck();
+ else{ // no CUDA device: the switch is disabled and the resource stays 'GPU if available'; pin the CPU explicitly
+  const toggle=page.locator('[data-advanced-toggle]');
+  if(await toggle.getAttribute('aria-expanded')!=='true')await toggle.click();
+  await page.getByLabel('resource',{exact:true}).selectOption('cpu');
+ }
+ await expect(page.getByLabel('resource',{exact:true})).toHaveValue('cpu');
+ const memory=page.getByLabel('memory',{exact:true}),consent=page.getByLabel('Allow approximate tiling',{exact:true}),status=page.locator('#execution-status');
+ await expect(memory).toHaveValue('auto');
+ await expect(memory.locator('option[value="streamed_disk"]')).toHaveText('Streamed through disk (slow, opt-in)');
+ await expect(consent).not.toBeChecked();
+ await expect(status).toContainText('Auto → Resident on CPU');
+ await expect(status).toContainText('within 80% of available host memory');
+ await expect(page.locator('#properties')).toContainText('Streamed through disk is never chosen automatically');
+ const validated=page.waitForResponse(r=>r.url().endsWith('/api/validate')&&r.request().method()==='POST');
+ await consent.check();
+ const body=(await validated).request().postDataJSON();
+ expect(body.region.tiling.allow_approximate).toBe(true);
+ expect(body.region.execution_mode).toBe('auto');
+ await expect(consent).toBeChecked();
+ const saved=JSON.parse(await page.evaluate(()=>localStorage.getItem('torchfdtd.project.v1')));
+ expect(saved.region.tiling.allow_approximate).toBe(true);
+ await page.getByLabel('time steps',{exact:true}).fill('120');await page.getByLabel('time steps',{exact:true}).press('Tab');
+ await expect(consent).toBeChecked();
+ await expect(status).toContainText('Auto → Resident on CPU');
+ await consent.uncheck();
+ await expect(consent).not.toBeChecked();
+ await memory.selectOption('streamed_disk');
+ await expect(status).toContainText('Streamed through disk on CPU');
+ await expect(status).toContainText('disk banks');
+ await memory.selectOption('auto');
+ await expect(status).toContainText('Auto → Resident on CPU');
+ const submitted=page.waitForResponse(r=>r.url().endsWith('/api/jobs')&&r.request().method()==='POST');
+ await page.locator('#run-button').click();
+ const response=await submitted;
+ expect(response.request().postDataJSON().region.tiling.allow_approximate).toBe(false);
+ const job=await response.json();
+ await expect(page.locator('#mode-badge')).toHaveText('ANALYSIS',{timeout:90000});
+ await expect(page.locator('.run-summary')).toContainText('Resident');
+ const result=await (await page.request.get('/api/jobs/'+job.id)).json();
+ expect(result.execution.requested).toBe('auto');
+ expect(result.execution.mode).toBe('resident');
+ expect(result.project.region.tiling.allow_approximate).toBe(false);
+ await page.screenshot({path:'results/ui-auto-policy.png',fullPage:true});
+ expect(errors).toEqual([]);
+});

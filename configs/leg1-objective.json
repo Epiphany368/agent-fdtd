@@ -1,0 +1,47 @@
+{
+  "kind": "canary",
+  "task": "Leg 1: the G8 N8 fixture reproduces the recorded objective J, the upward power, the launched incident power and the epsilon hash of run 20261013T210918Z-499098",
+  "policy": "leg1-objective-v1",
+  "core_index": 3.476558727709872,
+  "cladding_index": 1.4440231286977714,
+  "wavelength_um": 1.54925,
+  "precision": "float64",
+  "random_seed": 20261013,
+  "loop": {
+    "iterations": 3,
+    "initial_step_cells": 2.0,
+    "minimum_step_cells": 0.25,
+    "backtrack_factor": 0.5,
+    "armijo_c1": 0.0001
+  },
+  "cases": [
+    {
+      "id": "g3-g8-nh-n8-x10-y5-z5",
+      "periods": 8,
+      "dx_um": 0.01,
+      "dy_um": 0.005,
+      "z_cells": 5,
+      "duration_fs": 500,
+      "sampling": "normal-harmonic",
+      "checkpoint_options": {
+        "storage": "hierarchical",
+        "device_checkpoints": 16,
+        "host_checkpoints": 16,
+        "host_budget_bytes": 17179869184
+      }
+    }
+  ],
+  "expected": {
+    "source": "reference project run 20261013T210918Z-499098, script src/run_g3_loop.py, evaluations[0] (iter-1-adjoint, forward part), recorded with solver commit 7c4dd0a",
+    "tolerance_relative": 1e-12,
+    "cases": {
+      "g3-g8-nh-n8-x10-y5-z5": {
+        "J": 0.11714947784437847,
+        "P_up_reduced": 3.340635396996669e-42,
+        "P_in_reduced": 2.8516007569699743e-41,
+        "unit_mode_flux_reduced": 0.9991313246406412,
+        "epsilon_sha256": "db46d7c46594693f200357d69ca03a91d875847854070674a2b02632240a4067"
+      }
+    }
+  }
+}

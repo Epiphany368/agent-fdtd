@@ -1,0 +1,35 @@
+import { test, expect } from '@playwright/test';
+import fs from 'node:fs';
+
+test('independent FSP import, source controls and actual GPU execution',async({page})=>{
+ test.skip(!process.env.TORCHFDTD_NATIVE_FSP,'Requires prepared native-import fixture');
+ test.setTimeout(120000);
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.goto('/');await expect(page.locator('#tree')).toContainText('waveguide');
+ await page.locator('[data-action="fsp-native"]').click();
+ await page.locator('#fsp-native-input').setInputFiles(process.env.TORCHFDTD_NATIVE_FSP);
+ await expect(page.locator('#fsp-native-status')).toContainText('Ready to open',{timeout:20000});
+ await expect(page.locator('.native-issues')).toContainText('dipole moment');
+ const originalEvent=page.waitForEvent('download');await page.locator('[data-native="original"]').click();
+ expect(fs.readFileSync(await (await originalEvent).path())).toEqual(fs.readFileSync(process.env.TORCHFDTD_NATIVE_FSP));
+ await page.screenshot({path:'results/ui-fsp-native-review.png',fullPage:true});
+ await page.locator('[data-native="load"]').click();
+ await expect(page.locator('#fsp-native-dialog')).not.toBeVisible();
+ await expect(page.locator('#mesh-summary')).toContainText('128 × 128 × 128');
+ await expect(page.getByLabel('dt stability factor',{exact:true})).toHaveValue('0.99');
+ await page.locator('#tree .source-row').click();
+ await expect(page.getByLabel('time definition',{exact:true})).toHaveValue('standard');
+ await expect(page.getByLabel('pulselength (power FWHM)',{exact:true})).toHaveValue('17.2180401856');
+ await page.getByLabel('phase',{exact:true}).fill('15');await page.getByLabel('phase',{exact:true}).press('Tab');
+ await page.locator('#run-button').click();
+ await expect(page.locator('#mode-badge')).toHaveText('ANALYSIS',{timeout:90000});
+ await expect(page.locator('.run-summary')).toContainText('CUDA graph');
+ await expect(page.locator('.run-summary')).toContainText('5880');
+ const download=page.waitForEvent('download');await page.locator('[data-action="save"]').click();
+ const project=JSON.parse(fs.readFileSync(await (await download).path(),'utf8'));
+ expect(project.sources[0].phase).toBe(15);
+ expect(project.import_provenance.source_sha256).toMatch(/^[a-f0-9]{64}$/);
+ expect(project.import_provenance.differences.length).toBeGreaterThan(0);
+ await page.screenshot({path:'results/ui-fsp-native-result.png',fullPage:true});
+ expect(errors).toEqual([]);
+});

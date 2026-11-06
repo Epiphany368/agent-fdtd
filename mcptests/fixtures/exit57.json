@@ -1,0 +1,6 @@
+{
+  "kind": "audit",
+  "task": "LEG 40 A3 negative control: a fixture driver whose lawful outcome is exit 57; submit_run must report exit_status 57 and ok false",
+  "policy": "leg40-exit57-fixture-v1",
+  "driver": "src/exit57.py"
+}

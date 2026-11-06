@@ -1,0 +1,109 @@
+{
+  "schema": "leg27-evidence-requirements-v1",
+  "what_this_file_is": "The declaration list of LEG 27: per owning leg, the archived artefacts its checks need, derived on 2026-10-19 from the ten skipTest('no archived ...') sites in checks/test_coverage_audit.py and checks/test_leg15_closure.py and from what those tests actually open. checks/test_leg27_evidence_gaps.py validates this file against its built-in inventory and decides, per leg, present / declared-absent / needed-absent, with the distinction carried in the exit status.",
+  "flag_semantics": "evidence_absent_by_design: true means this leg's archived artefacts are machine-local data under runs/ (untracked: .gitignore keeps runs/ledger.jsonl and ignores runs/*; run directories exist only on the machines where the sweep ran). A conforming fresh checkout therefore does not carry them, and the leg's checks skip in that state by design -- their 'no archived ...' guards. The flag declares that absence as acceptable but visible; checks/test_leg27_evidence_gaps.py prints it as declared-absent and does not fail. It does NOT mean the artefacts never existed where the legs ran. A leg whose artefacts are absent WITHOUT this flag makes the meta-check fail: needed-absent.",
+  "legs": {
+    "leg4": {
+      "owning_config": "configs/leg4-convergence-ladder.json",
+      "artifacts": [
+        {
+          "id": "leg4-ladder-interface-ppw40-run",
+          "probe": "readout-policy",
+          "paths": ["runs/*/readout.json"],
+          "policy": "leg4-convergence-v1",
+          "case_id": "ladder-interface-ppw40",
+          "display": "a runs/*/readout.json with policy 'leg4-convergence-v1' carrying case id 'ladder-interface-ppw40'",
+          "derived_from": [
+            "checks/test_leg15_closure.py:41-53 (find_case)",
+            "checks/test_leg15_closure.py:120 (the call)",
+            "checks/test_leg15_closure.py:121-122 (the guard)"
+          ]
+        }
+      ],
+      "skips": [
+        {
+          "file": "checks/test_leg15_closure.py",
+          "reason": "no archived leg-4 run on this machine",
+          "sites": [122]
+        }
+      ],
+      "evidence_absent_by_design": true
+    },
+    "leg11": {
+      "owning_config": "configs/leg11-coverage-audit.json",
+      "artifacts": [
+        {
+          "id": "leg11-at-least-one-discoverable-run",
+          "probe": "readout-policy",
+          "paths": ["runs/*/readout.json"],
+          "policy_not_in": ["leg11-coverage-audit-v1", "leg13-readout-ledger-v1"],
+          "display": "at least one runs/*/readout.json whose policy is not one of the two audit ledgers ('leg11-coverage-audit-v1', 'leg13-readout-ledger-v1') -- RUNS in checks/test_coverage_audit.py:19",
+          "derived_from": [
+            "checks/test_coverage_audit.py:19 (RUNS discovery)",
+            "checks/test_coverage_audit.py:37-38, 72-73, 83-84 (the guards)",
+            "src/coverage_audit.py:111-127 (discover_runs)"
+          ]
+        }
+      ],
+      "skips": [
+        {
+          "file": "checks/test_coverage_audit.py",
+          "reason": "no archived runs",
+          "sites": [38, 73, 84]
+        }
+      ],
+      "evidence_absent_by_design": true
+    },
+    "leg12": {
+      "owning_config": "configs/leg12-closed-slab.json",
+      "artifacts": [
+        {
+          "id": "leg12-slab-run-with-monitor-arrays",
+          "probe": "readout-policy",
+          "paths": ["runs/*/readout.json"],
+          "policy": "leg12-closed-box-v1",
+          "case_id": "slab",
+          "sibling": "slab-sample-monitors.npz",
+          "display": "a runs/*/readout.json with policy 'leg12-closed-box-v1', a case id 'slab', and slab-sample-monitors.npz beside it",
+          "derived_from": [
+            "checks/test_leg15_closure.py:22-38 (find_leg12_slab_run)",
+            "checks/test_leg15_closure.py:38 (the guard)"
+          ]
+        }
+      ],
+      "skips": [
+        {
+          "file": "checks/test_leg15_closure.py",
+          "reason": "no archived leg-12 run on this machine",
+          "sites": [83, 107, 118, 131, 153]
+        }
+      ],
+      "evidence_absent_by_design": true
+    },
+    "leg15": {
+      "owning_config": "configs/leg15-closure.json",
+      "artifacts": [
+        {
+          "id": "leg15-closure-latest-run-cases",
+          "probe": "readout-policy",
+          "paths": ["runs/*/readout.json"],
+          "policy": "leg15-closure-v1",
+          "newest": true,
+          "display": "the newest runs/*/readout.json with policy 'leg15-closure-v1' has usable cases (id and measured on them), as leg15_results() reads it",
+          "derived_from": [
+            "checks/test_leg15_closure.py:56-66 (leg15_results)",
+            "checks/test_leg15_closure.py:142-145 (the setUp guard)"
+          ]
+        }
+      ],
+      "skips": [
+        {
+          "file": "checks/test_leg15_closure.py",
+          "reason": "no archived leg-15 run on this machine",
+          "sites": [145]
+        }
+      ],
+      "evidence_absent_by_design": true
+    }
+  }
+}

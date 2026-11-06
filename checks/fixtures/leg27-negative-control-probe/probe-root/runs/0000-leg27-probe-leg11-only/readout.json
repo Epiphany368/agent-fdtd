@@ -1,0 +1,6 @@
+{
+  "leg27_probe": true,
+  "probe_note": "checks/fixtures/leg27-negative-control-probe: not a run record, a detection probe for checks/test_leg27_evidence_gaps.py",
+  "policy": "leg27-probe-not-real-evidence",
+  "cases": []
+}

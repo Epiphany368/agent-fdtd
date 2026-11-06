@@ -1,0 +1,34 @@
+import {test,expect} from '@playwright/test';
+
+test('edit magnetic vector source, preview half-step samples, execute and retain JSON',async({page})=>{
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.goto('/');await expect(page.locator('#tree')).toContainText('waveguide');
+ await page.getByLabel('time steps',{exact:true}).fill('120');await page.getByLabel('time steps',{exact:true}).press('Tab');
+ await page.getByLabel('resource',{exact:true}).selectOption(process.env.TORCHFDTD_TEST_CUDA?'cuda':'cpu');
+ await page.locator('[data-select="source"]').click();
+ await page.getByLabel('polarization',{exact:true}).selectOption('Hz');
+ await page.getByLabel('Use theta / phi orientation',{exact:true}).check();
+ await expect(page.getByLabel('field type',{exact:true})).toHaveValue('H');
+ await page.getByLabel('theta',{exact:true}).fill('43');await page.getByLabel('theta',{exact:true}).press('Tab');
+ await page.getByLabel('phi',{exact:true}).fill('219');await page.getByLabel('phi',{exact:true}).press('Tab');
+ const previewResponse=page.waitForResponse(r=>r.url().includes('/sources/')&&r.url().endsWith('/preview')&&r.request().method()==='POST');
+ await page.getByRole('button',{name:'Preview time signal / spectrum',exact:true}).click();
+ const preview=await (await previewResponse).json();
+ expect(preview.field_family).toBe('H');expect(preview.time_offset_steps).toBe(.5);
+ expect(preview.time_fs[0]).toBeCloseTo(1.5*preview.dt_fs,12);
+ expect(Object.keys(preview.polarization_components)).toEqual(['Hx','Hy','Hz']);
+ await page.locator('.source-dialog').getByRole('button',{name:'Close',exact:true}).click();
+ await page.screenshot({path:'results/ui-vector-source.png',fullPage:true});
+ const submitted=page.waitForResponse(r=>r.url().endsWith('/api/jobs')&&r.request().method()==='POST');
+ await page.locator('#run-button').click();const key=(await (await submitted).json()).id;
+ await expect(page.locator('#results-tree')).toContainText('field snapshots',{timeout:45000});
+ const job=await (await page.request.get('/api/jobs/'+key)).json();
+ expect(job.project.sources[0].component).toBe('Hz');expect(job.project.sources[0].theta).toBe(43);
+ expect(job.project.sources[0].phi).toBe(219);expect(job.summary.field_peak).toBeGreaterThan(0);
+ if(process.env.TORCHFDTD_TEST_CUDA)expect(job.summary.backend).toBe('cuda');
+ await expect(page.getByLabel('theta',{exact:true})).toBeDisabled();
+ await page.reload();await page.locator('[data-select="source"]').click();
+ await expect(page.getByLabel('theta',{exact:true})).toHaveValue('43');
+ await expect(page.getByLabel('field type',{exact:true})).toHaveValue('H');
+ expect(errors).toEqual([]);
+});

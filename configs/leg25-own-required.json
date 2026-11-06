@@ -1,0 +1,18 @@
+{
+  "kind": "benchmark",
+  "task": "LEG 25: own-demand CPU regression and unchanged LEG 23 reserved-peak relation",
+  "policy": "leg25-own-required-v1",
+  "worker_config": "configs/leg19-admission.json",
+  "cost_valve_seconds": 1800,
+  "expected_exit_before_run": 0,
+  "exit_contract": {
+    "0": "Relation holds on every measured row",
+    "57": "Relation violated on an admitted row: lawful finding",
+    "58": "Invalid or incomplete evidence or fork integrity stop; not a relation finding",
+    "59": "Worker OOM: immediate stop and report, no restoration or retry",
+    "56": "Cost valve exceeded"
+  },
+  "input_basis": "Physical inputs and worker implementation are reused unchanged from LEG 19. Fresh observations do not replace historical numbers. All rows gate memory_reservation_bytes. Refused rows observe the base model with a metadata-only capacity bypass after the actual refusal, without allocating fields; admitted rows include modal storage. The actual refusal required_bytes is retained separately because W3 changes it to incremental demand.",
+  "copied_from": "helpful-quail:configs/leg23-relation.json",
+  "copied_source_sha256": "f497f70447cfbf991e1ed436415db69259cc9db4fa15a8117aeeca99969d1d68"
+}

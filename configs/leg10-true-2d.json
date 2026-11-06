@@ -1,0 +1,26 @@
+{
+  "kind": "canary",
+  "task": "Leg 10: bring the true 2-D path into this repository. Reproduce the recorded 3-D N8 forward in a true 2-D region, and reproduce the fork's 2-D refusals as refusals.",
+  "policy": "leg10-true-2d-v1",
+  "core_index": 3.476558727709872,
+  "cladding_index": 1.4440231286977714,
+  "wavelength_um": 1.54925,
+  "width_um": 0.126,
+  "case": {
+    "id": "native-n8-true-2d",
+    "dx_um": 0.02,
+    "dy_um": 0.01,
+    "z_cells": 5,
+    "periods": 8,
+    "duration_fs": 500,
+    "shift_nm": 0,
+    "transition_nm": 20
+  },
+  "recorded_3d": {
+    "source": "this repository, run 20261018T045351Z-203702, src/leg1_forward.py, the same case in a 3-D region with five periodic z cells",
+    "T": 0.5743797002155621,
+    "R": 0.10389604258260136
+  },
+  "tolerance_relative": 1e-9,
+  "tolerance_basis": "1e-9 relative: the reference project measured true 2-D against its five-cell 3-D arm at 1e-13 for a z-invariant fixture, so this repository must be able to reproduce that order. 1e-9 is a looser gate deliberately, because this repository's fixtures and run lengths are not that project's."
+}

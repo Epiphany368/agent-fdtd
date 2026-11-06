@@ -1,0 +1,49 @@
+{
+  "kind": "physics",
+  "task": "Leg 36: M4 attribution, one x refinement over [-6.1, 6.1] um in LEG 24's archived graded scene",
+  "policy": "leg36-m4-attribution-v1",
+  "core_index": 3.476558727709872,
+  "cladding_index": 1.4440231286977714,
+  "wavelength_um": 1.54925,
+  "width_um": 0.126,
+  "precision": "float64",
+  "expected": {
+    "source": "reference project run 20261012T024518Z-156698, script src/run_b9_native_shape_n8.py, row baseline-adjoint (shift 0), recorded with solver commit ebcc0f7",
+    "tolerance_relative": 1e-12,
+    "cases": {
+      "native-n8-forward-shift0-v1p23": {
+        "T": 0.5743797002155621,
+        "R": 0.10389604258260136,
+        "epsilon_sha256": "379475a1bd5b1f1e8a55c30b2d1ab408ae35ef0a8577cc62aa04a303fda52835"
+      }
+    }
+  },
+  "cases": [
+    {
+      "id": "native-n8-forward-shift0-v1p23",
+      "dx_um": 0.02,
+      "dy_um": 0.01,
+      "z_cells": 5,
+      "periods": 8,
+      "duration_fs": 500,
+      "shift_nm": 0,
+      "transition_nm": 20
+    }
+  ],
+  "mode": "x-refined-check",
+  "agreement_relative": 0.001,
+  "max_realised_ratio": 1.25,
+  "x_refinement_um": [-6.1, 6.1],
+  "leg24_graded_result": {
+    "run_id": "20261019T165011Z-649157",
+    "T": 0.561811051915836,
+    "R": 0.10790326612155608,
+    "relative_error_T": 0.021882124829636355,
+    "relative_error_R": 0.03856954932396796
+  },
+  "provenance": {
+    "inputs": "configs/leg24-graded-check.json; every physical input copied unchanged, verified programmatically against the archived file",
+    "graded": "Native mesher defaults, mesh_type=graded and time_step_rule=realised_axis_minimum; one MeshRefinement box in x over the whole PML-free interior, with no effective span in y and z; same axis_steps, duration, source, monitors and material function",
+    "comparison": "Uniform and x-refined graded cases in one launcher invocation. The pre-declared LEG 36 decision rule in plan.md is the only interpretation: relative T and R differences against the uniform case, both gated at 1e-3."
+  }
+}

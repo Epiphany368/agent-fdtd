@@ -1,0 +1,118 @@
+{
+  "kind": "audit",
+  "task": "Leg 13 (S4): the readout-definition ledger -- every registered number names its plane, span and normalisation, checked mechanically over the archived runs and against rebuilt monitor geometry; the 5.6 pt term bounded or declared unbounded; the leg-11 audit recomputed. No simulation.",
+  "policy": "leg13-readout-ledger-v1",
+  "leg": 13,
+  "c6_fields": [
+    "J",
+    "P_up_reduced",
+    "P_in_reduced",
+    "unit_mode_flux_reduced",
+    "reference_power_reduced",
+    "eta_lat"
+  ],
+  "stop_conditions": [
+    "a definition that cannot be recovered from the material is recorded as UNKNOWN and the item stops; no normalisation plane is invented",
+    "closing the 5.6 pt term with a new simulation campaign is not done here; it is proposed as its own leg"
+  ],
+  "units": {
+    "readout-ledger": {
+      "pairs_in_scope": {
+        "unit": "count",
+        "plane": "not applicable: an inventory count over archived readouts, no monitor",
+        "span": "the pinned scope: every run up to the leg-11 audit run 20261018T131254Z-619690, plus leg 13 runs",
+        "normalisation": "none: number of distinct (policy, physics field) pairs"
+      },
+      "pairs_registered": {
+        "unit": "count",
+        "plane": "not applicable: an inventory count over archived readouts, no monitor",
+        "span": "the pinned scope: every run up to the leg-11 audit run 20261018T131254Z-619690, plus leg 13 runs",
+        "normalisation": "none: pairs whose definition is in the leg-13 registry only"
+      },
+      "pairs_declared_and_registered": {
+        "unit": "count",
+        "plane": "not applicable: an inventory count over archived readouts, no monitor",
+        "span": "the pinned scope: every run up to the leg-11 audit run 20261018T131254Z-619690, plus leg 13 runs",
+        "normalisation": "none: pairs declared by their own readout and also in the registry"
+      },
+      "pairs_unknown": {
+        "unit": "count",
+        "plane": "not applicable: an inventory count over archived readouts, no monitor",
+        "span": "the pinned scope: every run up to the leg-11 audit run 20261018T131254Z-619690, plus leg 13 runs",
+        "normalisation": "none: pairs recorded as UNKNOWN with a reason"
+      },
+      "pairs_missing": {
+        "unit": "count",
+        "plane": "not applicable: an inventory count over archived readouts, no monitor",
+        "span": "the pinned scope: every run up to the leg-11 audit run 20261018T131254Z-619690, plus leg 13 runs",
+        "normalisation": "none: pairs with no definition anywhere"
+      },
+      "pairs_invalid": {
+        "unit": "count",
+        "plane": "not applicable: an inventory count over archived readouts, no monitor",
+        "span": "the pinned scope: every run up to the leg-11 audit run 20261018T131254Z-619690, plus leg 13 runs",
+        "normalisation": "none: pairs with an incomplete definition"
+      },
+      "pairs_from_later_legs": {
+        "unit": "count",
+        "plane": "not applicable: an inventory count over archived readouts, no monitor",
+        "span": "runs after the leg-11 audit run from other policies",
+        "normalisation": "none: pairs listed but not judged"
+      },
+      "monitor_comparisons": {
+        "unit": "count",
+        "plane": "not applicable: an inventory count over archived readouts, no monitor",
+        "span": "the pinned scope: every run up to the leg-11 audit run 20261018T131254Z-619690, plus leg 13 runs",
+        "normalisation": "none: monitor geometries rebuilt from archived configs and compared"
+      },
+      "geometry_disagreements": {
+        "unit": "count",
+        "plane": "not applicable: an inventory count over archived readouts, no monitor",
+        "span": "the pinned scope: every run up to the leg-11 audit run 20261018T131254Z-619690, plus leg 13 runs",
+        "normalisation": "none: pairs with at least one disagreement"
+      },
+      "leg11_open_before": {
+        "unit": "count",
+        "plane": "not applicable: an inventory count over archived readouts, no monitor",
+        "span": "the 33 runs leg 11 inventoried",
+        "normalisation": "none: open physics fields under the unchanged leg-11 rules"
+      },
+      "leg11_open_after": {
+        "unit": "count",
+        "plane": "not applicable: an inventory count over archived readouts, no monitor",
+        "span": "the 33 runs leg 11 inventoried",
+        "normalisation": "none: open physics fields with the S4 result applied"
+      },
+      "leg11_gap_s4_before": {
+        "unit": "count",
+        "plane": "not applicable: an inventory count over archived readouts, no monitor",
+        "span": "the 33 runs leg 11 inventoried",
+        "normalisation": "none: open fields assigned to S4, unchanged rules"
+      },
+      "leg11_gap_s4_after": {
+        "unit": "count",
+        "plane": "not applicable: an inventory count over archived readouts, no monitor",
+        "span": "the 33 runs leg 11 inventoried",
+        "normalisation": "none: open fields assigned to S4, S4 result applied"
+      },
+      "transition_term_difference_pt_net_basis": {
+        "unit": "dimensionless",
+        "plane": "ours: x = -3.5 and 51.842 um, 1.5 um span; vendor: UNKNOWN",
+        "span": "frozen single-run values from the predecessor record",
+        "normalisation": "percentage points of input, 100 x [(1 - b_in/b_src_in) - (1 - 1/1.1014)]; conditional on the net basis, not a bound"
+      },
+      "transition_term_difference_pt_modal_basis": {
+        "unit": "dimensionless",
+        "plane": "as above",
+        "span": "as above",
+        "normalisation": "percentage points of input, the same difference with the vendor ratio re-expressed from a modal to a net b_in by 71.450/74.277; conditional, not a bound"
+      },
+      "alpha_upper_bound_np_per_mm": {
+        "unit": "not-applicable",
+        "plane": "not applicable: arithmetic on a recorded far-end transmission of the reference solver line",
+        "span": "L = 550.8 um, T_far = 0.0238",
+        "normalisation": "-ln(T_far)/(2L) in nepers per millimetre (no unit in the closed vocabulary; recorded as not-applicable rather than inventing one)"
+      }
+    }
+  }
+}

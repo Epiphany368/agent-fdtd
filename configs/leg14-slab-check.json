@@ -1,0 +1,47 @@
+{
+  "kind": "physics",
+  "task": "Leg 14 step 2: V1-slab-mode. launch_neff of the TM0 launch on a symmetric sharp slab at the N8 fixture mesh, judged against the symmetric-slab TM eigenvalue equation, plus the asymmetric-stack negative control.",
+  "policy": "leg14-slab-check-v1",
+  "leg": 14,
+  "slab": {
+    "mode": "check",
+    "core_index": 3.476558727709872,
+    "cladding_index": 1.4440231286977714,
+    "upper_index_control": 1.0,
+    "index_source": "configs/leg1-objective.json core_index and cladding_index (the N8 fixture)",
+    "wavelength_um": 1.54925,
+    "x_span_um": 1.68,
+    "y_span_um": 6.0,
+    "dz_um": 0.04,
+    "z_cells": 5,
+    "aperture_um": 3.6,
+    "aperture_center_y_um": 0.12,
+    "steps": 200,
+    "fixture_dx_dy_um": [0.01, 0.005]
+  },
+  "analytic_cases": [
+    {
+      "id": "V1-slab-mode",
+      "law": "slab-tm0",
+      "case_id": "slab-tm0-symmetric",
+      "core_index": 3.476558727709872,
+      "cladding_index": 1.4440231286977714,
+      "thickness_um": 0.22,
+      "wavelength_um": 1.54925,
+      "points": [{"field": "launch_neff"}],
+      "tolerance": 0.00202,
+      "tolerance_kind": "discretisation-limited floor, measured by this leg from the solver's own self-convergence",
+      "basis": "Run 20261018T132521Z-637008 (configs/leg14-slab-floor.json): mesh ladder (dx, dy) = (0.02, 0.01) ... (0.0025, 0.00125), observed orders 2.008 and 2.002; Richardson estimate of the fixture's own error 1.0094e-03; floor = 2 x estimate = 2.0189e-03, rounded up to 2.02e-03. The law was not evaluated in that run.",
+      "scope_match": "matched",
+      "scope_match_reason": "Declared before the check run. The aperture cross-section is cladding (n2) / core (n1, 0.22 um) / cladding (n2), symmetric, sharp interfaces (an on-interface sample takes the mean), lossless, non-dispersive; the selected launch is Ey-dominant (score 1 - 1e-8 or better), i.e. E normal to the layers: the TM mode; the Ey-dominant mode found is the fundamental one (one guided TM mode at d = 0.22 um). The periodic aperture walls sit 1.68 and 1.70 um from the core; the TM0 field there is below exp(-gamma x 1.68) ~ 1e-12.",
+      "negative_controls": [
+        "physics: the same driver with the upper cladding replaced by vacuum (an asymmetric stack, outside the law's scope) must fail against the symmetric law",
+        "offset: +0.25 added to launch_neff in an in-memory copy must fail"
+      ]
+    }
+  ],
+  "stop_conditions": [
+    "the selected launch mode is not Ey-dominant: the TM scope does not hold, drop the case",
+    "any fork change needed: stop"
+  ]
+}

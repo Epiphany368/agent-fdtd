@@ -1,0 +1,32 @@
+{
+  "kind": "canary",
+  "task": "Leg 7 part 2: launch the M Bloch cells the feasibility study sized, combine them by the ASM midpoint sum, compare the reconstructed beam against the arithmetic reference, quantify the single-source frequency drift and check energy conservation",
+  "policy": "leg7-asm-campaign-v1",
+  "wavelength_um": 1.54925,
+  "band_um": [
+    1.5,
+    1.6
+  ],
+  "period_um": 0.9,
+  "slab_um": 0.2,
+  "half_z_um": 1.2,
+  "mesh_um": 0.02,
+  "pml_um": 0.4,
+  "steps": 6000,
+  "pulse_cycles": 4,
+  "source_z_um": -0.5,
+  "monitor_z_um": 0.6,
+  "exterior_index": 1.0,
+  "w0_um": 2.0,
+  "orders": [
+    4,
+    6,
+    8,
+    12
+  ],
+  "registered_M": 8,
+  "tolerance_reconstruction": 0.05,
+  "tolerance_energy": 0.002,
+  "tolerance_basis": "Reconstruction tolerance 5 percent relative L2 over the beam: looser than the feasibility study's 1 percent because the real-cell reconstruction carries the source spectrum's own truncation, which the arithmetic does not model. Energy tolerance 0.002 absolute on the forward plus backward power across the swept Bloch phases: the smoke study's own homogeneity check, which reported the split as angle dependent but the sum as not.",
+  "geometry_note": "half_z 1.2 with a 0.4 micrometre PML leaves |z| < 0.8 for the non-PML region, so the source at -0.5 and the monitors at +0.6 and -0.6 are all inside it. The Project validator refuses a source inside the PML, which is what caught the first attempt."
+}

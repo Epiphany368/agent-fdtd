@@ -1,0 +1,25 @@
+- 它由什么组成 | 仓库长什么样，每个目录装什么
+  - 四个权威文件 | 谁说话算数，一眼看清
+    - README.md 讲怎么跑 | 启动命令只在这里写。警告：它顶部的状态行是"leg 1 in progress"，已经过期，实际是十条腿全部验收 [issue] [src: README.md]
+    - AGENTS.md 讲规矩 | 在这个目录里工作的硬规则，外加求解器改动的授权日志表 [src: AGENTS.md]
+    - plan.md 讲答应了什么 | 验收记录：每条腿的方法、预声明判据、停止条件、判决，超过 1200 行 [src: plan.md]
+    - PROVENANCE.md 讲来源 | 每个固定的提交、每个从参考项目复制来的文件 [src: PROVENANCE.md]
+    - STATUS.md 是衍生的，会落后 | 它自己第一句就写明：冲突时 `plan.md`、`runs/ledger.jsonl`、`output/` 赢 [src: STATUS.md 开头]
+  - 入口三件 | 一条命令背后的三个文件
+    - tools/run.sh | 取排他锁、做源码快照、写清单、写 `effective.json`、记账、把退出码交出来 [src: README.md]
+    - tools/launch.py | 写 `runs/ledger.jsonl`，把 `config` 与 `python` 转成项目相对路径，绝对路径只留在未跟踪的清单里 [src: 本次会话]
+    - tools/report.py | 给每个头条数字标注它属于哪一类可信度 [src: README.md]
+  - 代码与检查
+    - src 放驱动与阶段实现 | 26 个条目，按腿拆分：`leg1_forward.py` 到 `leg10_true_2d.py`，另有 `analytic_cases.py`、`convergence.py`、`units_ledger.py` 等可复用件 [src: ls src/]
+    - checks 放检查 | 运行前闸门 `pre_environment.py`，加八个测试文件，共 200 条测试，3.9 秒跑完 [src: 本次会话]
+    - src 下两个软链是机器本地的 | `src/torchfdtd` 与 `src/torchfdtd_upstream` 指向求解器，不跟踪，由 `env/refs.env` 重建 [src: .gitignore]
+  - 配置与运行记录
+    - configs 13 个文件 | 每次运行一份配置，名字带腿号，例如 `leg4-convergence-ladder.json` [src: ls configs/]
+    - baseline-pin.json 固定求解器 | 里面的求解器根是仓库相对路径，可用环境变量覆盖，这样跟踪文件里不出现家目录 [src: 本次会话]
+    - output 25 个条目 | 每条腿一份英文证据文件，另加机器原始报告与负对照输出 [src: ls output/]
+    - runs 44 个条目 | 每个 run 一个不可变目录，装快照、清单、`effective.json`、日志 [src: ls runs/]
+    - 账本进 git，其余不进 | `runs/ledger.jsonl` 是唯一被跟踪的运行记录。不在账本里的运行等于没发生 [src: AGENTS.md]
+  - 机器本地与运行期
+    - env/refs.env | 只有这一行文件，专门不跟踪，存五个外部路径符号的取值 [src: env/refs.env]
+    - data/locks/ | GPU 锁文件。计算派发时会自动创建和释放，探针已验证这条路能走通 [src: 本次会话]
+    - dispatch/ | 派发记录，按后端分成 `claude/` 与 `codex/` 两个子目录，被 gitignore [src: .gitignore]

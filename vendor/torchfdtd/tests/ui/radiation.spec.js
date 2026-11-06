@@ -1,0 +1,35 @@
+import {test,expect} from '@playwright/test';
+
+test('actual CPU plane diffraction shows exterior errors, raw orders and evanescent distinction',async({page})=>{
+ const p=await (await page.request.get('/api/examples/3d')).json();
+ p.region={...p.region,dimension:'3d',backend:'cpu',size:[.6,.6,1.6],mesh:.1,steps:40,pml_cells:3,mesh_type:'uniform',mesh_steps:null};
+ for(const a of ['x','y','z'])for(const side of ['min','max'])p.region.boundaries[a+'_'+side]={kind:a==='z'?'pml':'periodic'};
+ p.structures=[];p.sources=[{id:'plane-source',name:'Plane source',kind:'plane',normal:'z',component:'Ex',center:[0,0,-.3],size:[.6,.6,0],pulse:'continuous',wavelength:1}];
+ p.monitors=[{id:'radiation-plane',name:'Radiation plane',kind:'field',normal:'z',center:[0,0,.3],size:[.6,.6,0],spectrum:{sampling:'custom',custom_frequencies_hz:[299792458e6],apodization:'none'}}];
+ await page.addInitScript(p=>{localStorage.setItem('torchfdtd.project.v1',JSON.stringify(p));localStorage.removeItem('torchfdtd.activeJob');},p);
+ const errors=[];page.on('pageerror',error=>errors.push(error.message));
+ await page.goto('/');await expect(page.locator('#tree')).toContainText('Radiation plane');
+ await page.locator('#run-button').click();await expect(page.locator('#mode-badge')).toHaveText('ANALYSIS',{timeout:30000});
+ await page.locator('[data-action="flux-results"]').first().click();
+ await page.getByRole('button',{name:'Diffraction orders',exact:true}).click();
+ const dialog=page.locator('.radiation-dialog');await expect(dialog).toBeVisible();
+ await dialog.getByRole('button',{name:'Calculate diffraction'}).click();
+ await expect(dialog.getByRole('status')).toContainText('Confirm');
+ await dialog.getByLabel('Confirm diffraction exterior').check();await dialog.getByLabel('Diffraction orders',{exact:true}).fill('0,0\n1,0');
+ await dialog.getByRole('button',{name:'Calculate diffraction'}).click();
+ await expect(dialog.getByRole('status')).toContainText('not efficiencies');
+ await expect(dialog.locator('tbody')).toContainText('Evanescent (zero real power)');
+ await expect(dialog.locator('tbody tr')).toHaveCount(2);
+ await page.screenshot({path:'results/ui-radiation-diffraction.png',fullPage:true});
+ let start,release;const started=new Promise(resolve=>start=resolve),held=new Promise(resolve=>release=resolve);
+ await page.route('**/api/jobs/*/diffraction',async route=>{const response=await route.fetch();start();await held;await route.fulfill({response});});
+ await dialog.getByRole('button',{name:'Calculate diffraction'}).click();await started;
+ await dialog.getByLabel('Diffraction orders',{exact:true}).fill('0,0');
+ await expect(dialog.locator('tbody tr')).toHaveCount(0);await expect(dialog.getByRole('status')).toHaveText('');
+ const delivered=page.waitForResponse(response=>response.url().endsWith('/diffraction'));
+ release();await delivered;
+ await expect(dialog.locator('tbody tr')).toHaveCount(0);
+ await expect(dialog.getByRole('button',{name:'Calculate diffraction'})).toBeEnabled();
+ await page.unroute('**/api/jobs/*/diffraction');
+ expect(errors).toEqual([]);
+});

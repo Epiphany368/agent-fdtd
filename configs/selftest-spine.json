@@ -1,0 +1,6 @@
+{
+  "kind": "audit",
+  "task": "Leg 1 spine self-test: the single command acquires the lock, snapshots the source, resolves the config, writes effective.json, records the ledger row and reports an exit status -- with no simulation",
+  "policy": "leg1-spine-selftest-v1",
+  "cases": []
+}

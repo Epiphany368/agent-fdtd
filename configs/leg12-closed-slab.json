@@ -1,0 +1,34 @@
+{
+  "kind": "physics",
+  "task": "Leg 12: V2-a energy balance on a non-empty closed box (lossless slab) with a lossy negative control",
+  "policy": "leg12-closed-box-v1",
+  "input_basis": "Slab index 3.5, ppw 40 and duration 260 fs are the leg-3 analytic-slab values (configs/leg3-analytic-cases.json, inherited there from the reference project's A1 canary). The 520 fs case doubles only the duration, to attribute any residual to time truncation or not. Transverse cells 6 is the leg-2 value. The control material is the solver's Lorentz model at its defaults except epsilon_inf = 3.5**2; it is a computational control, not a device material.",
+  "precision": "float64",
+  "graph_steps": 32,
+  "frequency_points": 41,
+  "cases": [
+    {"id": "slab", "geometry": "slab", "index": 3.5, "ppw": 40, "duration_fs": 260, "transverse_cells": 6,
+     "physics": {"family": "closed-lossless-plane", "lossless": true, "all_exits_monitored": true, "linear_reciprocal": true, "symmetric_source": false}},
+    {"id": "slab-long", "geometry": "slab", "index": 3.5, "ppw": 40, "duration_fs": 520, "transverse_cells": 6,
+     "physics": {"family": "closed-lossless-plane", "lossless": true, "all_exits_monitored": true, "linear_reciprocal": true, "symmetric_source": false}},
+    {"id": "lossy-control", "geometry": "slab", "index": 3.5, "ppw": 40, "duration_fs": 260, "transverse_cells": 6,
+     "material": "lossy-lorentz-control", "negative_control": true,
+     "physics": {"family": "closed-lossless-plane", "lossless": false, "all_exits_monitored": true, "linear_reciprocal": true, "symmetric_source": false}}
+  ],
+  "invariants": [
+    {"id": "V2-a", "case_id": "slab", "tolerance": 1e-12,
+     "basis": "The empty-domain tolerance of leg 2 (float64 roundoff), kept unchanged on purpose: plan.md leg 12 stop condition 2 forbids widening it to pass. A non-empty lossless box that does not reach it is reported with its measured floor."},
+    {"id": "V2-b", "case_id": "slab", "tolerance": 1e-12,
+     "basis": "Passivity bound-violation budget for float64 roundoff, as in leg 2."},
+    {"id": "V2-a", "case_id": "slab-long", "tolerance": 1e-12,
+     "basis": "Same as slab; this case differs only by doubled duration."},
+    {"id": "V2-b", "case_id": "slab-long", "tolerance": 1e-12,
+     "basis": "Same as slab."},
+    {"id": "V2-a", "case_id": "lossy-control", "tolerance": 1e-12,
+     "basis": "Registered so that the report shows it dropped as unlawful (the box is declared lossy). The negative control re-evaluates it with the lossless claim on an in-memory copy; it must fail."}
+  ],
+  "dropped_invariants": [
+    {"id": "V2-c", "reason": "One-way source; no symmetric-source measurement (as in leg 2)."},
+    {"id": "V2-d", "reason": "No exchanged-port measurement (as in leg 2)."}
+  ]
+}

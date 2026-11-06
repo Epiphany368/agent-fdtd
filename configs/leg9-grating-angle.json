@@ -1,0 +1,22 @@
+{
+  "kind": "canary",
+  "task": "Leg 9 part 2: the grating's own angle sensitivity. Two Bloch cells 0.4002 degrees apart, comparing the zero-order efficiency.",
+  "policy": "leg9-grating-angle-v1",
+  "wavelength_um": 1.54925,
+  "period_um": 0.9,
+  "slab_um": 0.2,
+  "half_z_um": 1.2,
+  "mesh_um": 0.02,
+  "pml_um": 0.4,
+  "steps": 6000,
+  "pulse_cycles": 4,
+  "source_z_um": -0.5,
+  "monitor_z_um": 0.6,
+  "exterior_index": 1.0,
+  "grating": {"fill_period_um": 0.9, "tooth_um": 0.45, "eps_tooth": 4.0, "slab_z_um": 0.6},
+  "angle_a_deg": 8.5,
+  "drift_deg": 0.4002,
+  "tolerance_analytic": 0.01,
+  "tolerance_known_discrepancy": 0.056,
+  "tolerance_basis": "The result is compared against this project's two existing tolerances rather than a new number: 0.01 absolute (the analytic-case tolerance from legs 3 and 4) and 0.056 (the known unresolved readout discrepancy). Nothing new is invented for this leg."
+}

@@ -1,0 +1,22 @@
+{
+ "declared": "2026-09-22, before the first comparison run; not edited afterwards (notes may be added)",
+ "evaluated_at_wavelength_um": 1.55,
+ "extra_wavelengths_um": [1.6, 1.5],
+ "extra_wavelengths_note": "reported in the tables for information; the criteria apply at 1.55 um only",
+ "parts": {
+  "2d": {
+   "focal_position": {"metric": "absolute difference of the on-axis intensity peak position (three-point parabola through the largest sample of the axis line)", "unit": "um", "limit": 0.1},
+   "fwhm": {"metric": "relative difference of the focal-plane intensity FWHM (linear interpolation of the half-maximum crossings), |a-b| / mean(a,b)", "unit": "1", "limit": 0.03},
+   "profile_rms": {"metric": "RMS over the focal line of the difference of the two intensity profiles (each relative to its own bare-cell incident intensity), divided by the mean of the two peaks", "unit": "1", "limit": 0.03},
+   "efficiency": {"metric": "absolute difference of the focusing efficiency: y-directed power within 1.5 FWHM of the focal-plane peak divided by the bare-cell power through the aperture line", "unit": "1", "limit": 0.01}
+  },
+  "3d": {
+   "focal_position": {"metric": "absolute difference of the on-axis intensity peak position (three-point parabola through the largest sample of the axis row of the xz section)", "unit": "um", "limit": 0.1},
+   "fwhm_x": {"metric": "relative difference of the focal-plane FWHM along x through the peak, |a-b| / mean(a,b)", "unit": "1", "limit": 0.03},
+   "fwhm_y": {"metric": "relative difference of the focal-plane FWHM along y through the peak, |a-b| / mean(a,b)", "unit": "1", "limit": 0.03},
+   "profile_rms": {"metric": "RMS over the focal-plane map of the difference of the two intensity maps (each relative to its own bare-cell incident intensity), divided by the mean of the two peaks", "unit": "1", "limit": 0.03},
+   "efficiency": {"metric": "absolute difference of the focusing efficiency: z-directed power within a rectangle of 1.5 FWHM_x by 1.5 FWHM_y around the focal-plane peak divided by the bare-cell power through the aperture plane", "unit": "1", "limit": 0.01}
+  }
+ },
+ "grid_agreement": {"cells_per_axis": "equal", "dt_s": "relative difference at most 1e-9", "steps": "equal", "pml_cells": "equal", "geometry_sha256": "equal"}
+}

@@ -1,0 +1,29 @@
+{
+  "kind": "physics",
+  "task": "Leg 14 step 1: the discretisation floor of launch_neff on a symmetric sharp slab, from the solver's own mesh ladder. The closed-form law is NOT evaluated in this run.",
+  "policy": "leg14-slab-floor-v1",
+  "leg": 14,
+  "slab": {
+    "mode": "floor",
+    "core_index": 3.476558727709872,
+    "cladding_index": 1.4440231286977714,
+    "index_source": "configs/leg1-objective.json core_index and cladding_index (the N8 fixture)",
+    "wavelength_um": 1.54925,
+    "x_span_um": 1.68,
+    "y_span_um": 6.0,
+    "dz_um": 0.04,
+    "z_cells": 5,
+    "aperture_um": 3.6,
+    "aperture_center_y_um": 0.12,
+    "steps": 200,
+    "ladder_dx_dy_um": [[0.02, 0.01], [0.01, 0.005], [0.005, 0.0025], [0.0025, 0.00125]],
+    "fixture_dx_dy_um": [0.01, 0.005],
+    "fixture_source": "configs/leg1-objective.json case g3-g8-nh-n8-x10-y5-z5: dx 0.01, dy 0.005",
+    "safety_factor": 2.0,
+    "safety_factor_basis": "The floor is twice the Richardson estimate of the fixture's own discretisation error, so that an estimate that is off by up to a factor two (an observed order that is not yet asymptotic) still bounds the error. Declared before the run."
+  },
+  "stop_conditions": [
+    "observed order outside [1, 3] on the finer pairs: the ladder is not asymptotic, no floor is declared",
+    "any fork change needed: stop"
+  ]
+}

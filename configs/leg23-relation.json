@@ -1,0 +1,16 @@
+{
+  "kind": "benchmark",
+  "task": "LEG 23: measure unchanged leg-19 workers and gate prediction >= reserved peak on every row; diagnose occupied live-allocation double counting",
+  "policy": "leg23-reserved-relation-v1",
+  "worker_config": "configs/leg19-admission.json",
+  "cost_valve_seconds": 1800,
+  "expected_exit_before_run": 0,
+  "exit_contract": {
+    "0": "Relation holds on every measured row",
+    "57": "Relation violated on an admitted row: lawful finding",
+    "58": "Invalid or incomplete evidence or fork integrity stop; not a relation finding",
+    "59": "Worker OOM: immediate stop and report, no restoration or retry",
+    "56": "Cost valve exceeded"
+  },
+  "input_basis": "Physical inputs and worker implementation are reused unchanged from LEG 19. Fresh observations do not replace historical numbers. All rows gate memory_reservation_bytes. Refused rows observe the base model with a metadata-only capacity bypass after the actual refusal, without allocating fields; admitted rows include modal storage. The actual refusal required_bytes is retained separately because W3 changes it to incremental demand."
+}

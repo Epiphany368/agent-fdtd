@@ -1,0 +1,68 @@
+{
+  "kind": "benchmark",
+  "task": "Leg 48: V4 Cross-Solver Reconciliation (TorchFDTD vs Meep/RCWA)",
+  "policy": "leg48-cross-reconciliation-v1",
+  "benchmark": "metagrating",
+  "period_um": 2.0,
+  "wavelength_um": 1.55,
+  "substrate_index": 1.444,
+  "ridge_index": 3.48,
+  "ridge_height_um": 0.50,
+  "ridges": [
+    {
+      "center_x_um": -0.93,
+      "width_um": 0.08
+    },
+    {
+      "center_x_um": -0.32,
+      "width_um": 0.22
+    }
+  ],
+  "orders": [
+    -1,
+    0,
+    1
+  ],
+  "mesh_um": 0.02,
+  "pml_cells": 20,
+  "steps": 12000,
+  "courant_number": 0.700035713374682,
+  "precision": "float32",
+  "cross_solver": true,
+  "reconciliation_tolerance": 0.015,
+  "decay_floor": 1e-5,
+  "tau_energy": 0.015,
+  "external_solver": {
+    "name": "meep",
+    "version": "1.34.0",
+    "provenance": "torchfdtd-frozen-6fbe2ee/docs/validation/meep_comparison/metagrating_meep.json, 4 ranks MPI double precision CPU"
+  },
+  "expected": {
+    "meep": {
+      "T-1": 0.040523,
+      "T0": 0.070984,
+      "T+1": 0.776104,
+      "R-1": 0.044567,
+      "R0": 0.015698,
+      "R+1": 0.050921,
+      "sum": 0.998797
+    },
+    "rcwa": {
+      "T-1": 0.036451,
+      "T0": 0.074969,
+      "T+1": 0.774649,
+      "R-1": 0.047626,
+      "R0": 0.015584,
+      "R+1": 0.050721,
+      "sum": 1.000000
+    }
+  },
+  "tags": [
+    "cross_solver_reconciliation",
+    "verified:cross_solver_reconciled"
+  ],
+  "provenance": {
+    "citation": "C. Kim and B. Lee, TORCWA: GPU-accelerated Fourier modal method and gradient-based optimization for metasurface design, Comput. Phys. Commun. 282, 108552 (2023); Meep 1.34.0 (A. Oskooi et al., Comput. Phys. Commun. 181, 687-702, 2010)",
+    "criteria": "V4 Cross-Solver Reconciliation Gate: max absolute discrepancy across all 6 propagating diffraction orders <= 0.015 (1.5%); verified kernel telemetry facts."
+  }
+}

@@ -1,0 +1,33 @@
+import { test, expect } from '@playwright/test';
+import fs from 'node:fs';
+
+test('inspect and edit real FSP through installed Lumerical',async({page})=>{
+ test.skip(!process.env.TORCHFDTD_TEST_FSP,'Requires licensed workstation and FSP fixture');
+ test.setTimeout(120000);
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.goto('/');await expect(page.locator('#tree')).toContainText('waveguide');
+ await page.locator('#file-input').setInputFiles(process.env.TORCHFDTD_TEST_FSP);
+ await expect(page.locator('#fsp-dialog')).toBeVisible();
+ await expect(page.locator('#fsp-status')).toContainText('objects',{timeout:60000});
+ await expect(page.locator('.fsp-notice')).toContainText('Native GPU execution unavailable');
+ await page.locator('[data-fsp-object="::model::FDTD"]').click();
+ await page.getByLabel('Filter FSP properties').fill('x min bc');
+ await expect(page.getByLabel('FSP x min bc',{exact:true})).toHaveValue('Periodic');
+ await page.locator('[data-fsp-object="::model::dft"]').click();
+ await page.getByLabel('Filter FSP properties').fill('apodization');
+ await expect(page.getByLabel('FSP apodization',{exact:true})).toHaveValue('Full');
+ const originalDownload=page.waitForEvent('download');await page.locator('[data-fsp="original"]').click();
+ const original=await originalDownload;
+ expect(fs.readFileSync(await original.path())).toEqual(fs.readFileSync(process.env.TORCHFDTD_TEST_FSP));
+ await page.getByLabel('FSP apodization center',{exact:true}).fill('1.5e-13');
+ await page.getByLabel('FSP apodization center',{exact:true}).press('Tab');
+ await expect(page.locator('#fsp-patch-count')).toHaveText('(1)');
+ await page.screenshot({path:'results/ui-fsp.png',fullPage:true});
+ const editedDownload=page.waitForEvent('download',{timeout:60000});
+ await page.locator('[data-fsp="export"]').click();
+ const edited=await editedDownload;await edited.saveAs('results/ui-edited.fsp');
+ await expect(page.locator('#fsp-status')).toContainText('0 pending edits',{timeout:10000});
+ await expect(page.getByLabel('FSP apodization center',{exact:true})).toHaveValue('1.5e-13');
+ await expect(page.getByLabel('FSP apodization',{exact:true})).toHaveValue('Full');
+ expect(errors).toEqual([]);
+});

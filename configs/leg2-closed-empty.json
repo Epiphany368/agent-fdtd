@@ -1,0 +1,50 @@
+{
+  "kind": "physics",
+  "task": "Leg 2: short matched empty-domain control for registered energy and passivity invariants",
+  "policy": "leg2-invariants-v1",
+  "input_basis": "Unchanged parity.project_for empty family. Index 1 is the empty vacuum background, not a new device material. Mesh, duration and spectrum count are computational controls. All source wavelengths, positions, boundary conditions and monitor planes remain the copied adapter defaults.",
+  "precision": "float64",
+  "graph_steps": 32,
+  "cases": [
+    {
+      "id": "empty",
+      "geometry": "empty",
+      "index": 1.0,
+      "ppw": 10,
+      "duration_fs": 100,
+      "transverse_cells": 6,
+      "frequency_points": 5,
+      "physics": {
+        "family": "closed-lossless-plane",
+        "lossless": true,
+        "all_exits_monitored": true,
+        "linear_reciprocal": true,
+        "symmetric_source": false
+      }
+    }
+  ],
+  "invariants": [
+    {
+      "id": "V2-a",
+      "case_id": "empty",
+      "tolerance": 1e-12,
+      "basis": "Absolute dimensionless error budget for float64 arithmetic in two independently executed identical empty-domain simulations with matched flux normalization. This is a normalization control, not a mesh-convergence or nontrivial scattering accuracy tolerance. Periodic transverse boundaries leave only the two x exits, both covered by existing full-span monitors."
+    },
+    {
+      "id": "V2-b",
+      "case_id": "empty",
+      "tolerance": 1e-12,
+      "basis": "Absolute dimensionless bound-violation budget for float64 roundoff in the same matched empty-domain control. All entries must also be finite; finiteness has no tolerance."
+    }
+  ],
+  "dropped_invariants": [
+    {
+      "id": "V2-c",
+      "reason": "Stop condition 1: the copied adapter has a one-way source, not a symmetric source with measured forward and backward emitted powers. Register a separate symmetric-source measurement step before using this check."
+    },
+    {
+      "id": "V2-d",
+      "reason": "Stop condition 1: no exchanged-source/monitor paired measurement exists. Register a separate exchanged-port measurement step before using this check."
+    }
+  ]
+}

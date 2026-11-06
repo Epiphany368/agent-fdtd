@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "torchfdtd"
+version = "1.1.4"
+description = "An open-source visual FDTD workbench with Python and CUDA"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.txt"]
+dependencies = ["fdtd==0.2.2", "numpy>=1.24", "scipy>=1.10", "torch>=2.4", "fastapi>=0.115", "uvicorn>=0.30", "pydantic>=2.7"]
+
+[project.optional-dependencies]
+gds = ["gdstk>=0.9.62,<1.1"]
+hdf5 = ["h5py>=3.8"]
+dev = ["pytest>=8", "httpx>=0.27", "build>=1", "psutil>=5.9"]
+cuda-kernels = ["cupy-cuda12x>=13.6,<14"]
+benchmark = ["psutil>=5.9"]
+
+[project.scripts]
+torchfdtd = "torchfdtd.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["torchfdtd*"]
+
+[tool.setuptools.package-data]
+torchfdtd = ["web/**/*", "web/*", "feature_inventory.json", "capabilities.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "cuda: needs a CUDA device (and CuPy for fused kernels); deselected in cpu-pr, a skip fails under --gpu-required",
+    "long: opt-in long or isolated test enabled only by the release-full suite",
+    "optional: mixed-platform check whose skip is permitted in every suite (two-GPU NCCL, Gloo, licensed tools)",
+]

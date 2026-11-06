@@ -1,0 +1,54 @@
+{
+  "kind": "physics",
+  "task": "Leg 14 step 3: V1-grating-zero-order. The leg-9 Bloch cell and readout with a zero-modulation grating (one uniform film), judged against the oblique p-polarised film law at the two leg-9 angles; mesh ladder 0.02 / 0.01 reported (0.005 dropped on cost: about 18 GPU-h, see run 20261018T132639Z-638854, stopped).",
+  "policy": "leg14-grating-zero-order-v1",
+  "leg": 14,
+  "wavelength_um": 1.54925,
+  "period_um": 0.9,
+  "slab_um": 0.2,
+  "half_z_um": 1.2,
+  "pml_um": 0.4,
+  "steps_at_0p02": 6000,
+  "pulse_cycles": 4,
+  "source_z_um": -0.5,
+  "monitor_z_um": 0.6,
+  "exterior_index": 1.0,
+  "film": {"eps": 4.0, "thickness_um": 0.6},
+  "film_source": "configs/leg9-grating-angle.json: grating.eps_tooth 4.0 and grating.slab_z_um 0.6, with the modulation removed (tooth fills the whole period)",
+  "angle_a_deg": 8.5,
+  "drift_deg": 0.4002,
+  "angle_source": "configs/leg9-grating-angle.json angle_a_deg and drift_deg",
+  "ladder_mesh_um": [0.02, 0.01],
+  "fixture_mesh_um": 0.01,
+  "analytic_cases": [
+    {
+      "id": "V1-grating-zero-order",
+      "law": "film-tp",
+      "case_id": "film-grating-angle-pair",
+      "index": 2.0,
+      "thickness_um": 0.6,
+      "wavelength_um": 1.54925,
+      "points": [
+        {"field": "zero_order_efficiency", "angle_deg": 8.5},
+        {"field": "zero_order_efficiency_a", "angle_deg": 8.5},
+        {"field": "zero_order_efficiency_b", "angle_deg": 8.9002}
+      ],
+      "tolerance": 0.01,
+      "tolerance_kind": "discretisation-limited floor, earned by leg 4 for planar films at ppw >= 40",
+      "basis": "Leg 4 (V3 convergence ladder) measured second order on a planar slab and showed the 0.01 absolute floor holds at ppw >= 40 (STATUS.md, 'the inherited 0.01 absolute tolerance'). This fixture runs at ppw 77 inside the film (lambda / (n h) = 1.54925 / (2 x 0.01)). The ladder in this run is reported beside it.",
+      "scope_match": "matched",
+      "scope_match_reason": "Declared before the run. The structure is one uniform lossless non-dispersive film filling the whole Bloch period (zero modulation), vacuum on both sides (exterior_index 1.0, background eps 1), source component Ex with the Bloch wavevector along x (E in the plane of incidence: p polarisation), and lambda / period = 1.72 > 1 + sin(8.9002 deg), so only the (0,0) order propagates. zero_order_forward_power is NOT judged: it is an absolute power in solver units (S4).",
+      "negative_controls": [
+        "offset: +0.25 added to zero_order_efficiency in an in-memory copy must fail",
+        "wrong law: the same measured values judged against the s-polarised film law (film-ts) must fail; the declared law values differ by 0.0127 at 8.5 degrees and 0.0139 at 8.9002 degrees, so this control fails only if the measured error is below about 0.003"
+      ]
+    }
+  ],
+  "dropped_analytic_cases": [
+    {"id": "V1-grating-modulated", "reason": "see analytic_cases.LEG14_DROPPED: no closed form for a modulated binary grating"}
+  ],
+  "stop_conditions": [
+    "a non-zero efficiency in any order other than (0,0) above 1e-6: the zero-modulation scope does not hold, drop the case",
+    "any fork change needed: stop"
+  ]
+}
