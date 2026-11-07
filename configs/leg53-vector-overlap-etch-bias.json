@@ -1,0 +1,27 @@
+{
+  "task": "Wave E LEG 53: Calibrated Vector Mode Overlap & Continuous-Geometry Subpixel Etch-Bias on RTX 5070 Ti",
+  "kind": "benchmark",
+  "precision": "float64",
+  "wavelength_um": 1.55,
+  "dx_um": 0.020,
+  "dy_um": 0.020,
+  "steps": 1000,
+  "fiber_waist_um": 5.2,
+  "fiber_angle_deg": 10.0,
+  "etch_bias_shifts_nm": [-10.0, 0.0, 10.0],
+  "edge_sweep": {
+    "cell_dx_nm": 20.0,
+    "num_points": 21,
+    "step_nm": 1.0,
+    "tolerance": 1e-5
+  },
+  "tags": [
+    "vector_overlap",
+    "subpixel_etch_bias",
+    "verified:analytic_identity",
+    "verified:analytic_orthogonality",
+    "verified:directional_isolation",
+    "verified:edge_sweep_gradient",
+    "verified:etch_bias_corners"
+  ]
+}

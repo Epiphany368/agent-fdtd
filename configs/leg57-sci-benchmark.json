@@ -1,0 +1,23 @@
+{
+  "task": "Milestone v2.0.0 LEG 57: SciAgent 24-Task Scientific Falsification Benchmark & Ablation Study on RTX 5070 Ti",
+  "kind": "benchmark",
+  "precision": "float64",
+  "device": "cuda",
+  "fidelity_level": 2,
+  "budget_gpu_hours_limit": 0.6,
+  "num_tasks": 24,
+  "categories": 6,
+  "negative_control_count": 16,
+  "positive_control_count": 8,
+  "assurance_level": "estimated",
+  "tags": [
+    "sci_benchmark",
+    "falsification_benchmark",
+    "ablation_study",
+    "scientific_claim",
+    "two_tier_budget",
+    "falsification_gate",
+    "verified:scientific_claim",
+    "verified:falsification_gate"
+  ]
+}

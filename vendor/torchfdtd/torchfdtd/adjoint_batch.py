@@ -331,3 +331,6 @@ class RecomputedAdjointBatch(torch.nn.Module):
             results.append(_replace_tensors(template,flat[offset:offset+count]))
             offset+=count
         return AdjointBatchResult(tuple(results),run.report)
+
+
+from .cuda_batch import FusedBatchTransposeYeeCUDA, TensorPermittivityBatchAdapter

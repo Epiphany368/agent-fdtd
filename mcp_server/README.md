@@ -1,6 +1,6 @@
-# torchfdtd-platform-mcp (`agent-fdtd-mcp` v1.0.1)
+# torchfdtd-platform-mcp (`agent-fdtd-mcp` v2.0.0)
 
-An MCP server for **AgentFDTD** (`torchfdtd-platform`). It exposes **11 tools** over stdio
+An MCP server for **AgentFDTD** (`torchfdtd-platform`). It exposes **11 core tools** (plus **4 opt-in v2.0 experiment/claim/delivery tools**) over stdio
 (local clients, auto-configured via `.mcp.json`) and streamable HTTP (remote clients):
 
 | tool | returns |

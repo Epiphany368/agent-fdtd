@@ -85,6 +85,7 @@ def solver_status(root=None):
         subprocess.run(
             ["bash", str(root / "tools" / "setup_agent.sh"), "--skip-pip", "--quiet"],
             cwd=str(root),
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             check=False,
         )
@@ -138,12 +139,12 @@ def driver_for(root, config_path, config):
 
 def _command(root, config_path, driver):
     config_arg = paths.relative_to_root(config_path, root)
-    argv = [str(root / "tools" / "run.sh"), config_arg, driver]
+    argv = [(root / "tools" / "run.sh").as_posix(), config_arg, driver]
     return argv, shlex.join(argv)
 
 
 def _known_command(root):
-    return str(root / "tools" / "run.sh")
+    return (root / "tools" / "run.sh").as_posix()
 
 
 def list_configs():
@@ -261,6 +262,37 @@ def _ledger_row_for(root, run_id):
     return None
 
 
+def _pid_alive(pid: int) -> bool:
+    if not isinstance(pid, int) or pid <= 0:
+        return False
+    if os.name == "nt":
+        import ctypes
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        SYNCHRONIZE = 0x00100000
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        STILL_ACTIVE = 259
+        ERROR_ACCESS_DENIED = 5
+        handle = kernel32.OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not handle:
+            return ctypes.get_last_error() == ERROR_ACCESS_DENIED
+        try:
+            code = ctypes.c_ulong()
+            if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
+                return False
+            return code.value == STILL_ACTIVE
+        finally:
+            kernel32.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+
+
 def _validate_run_id(run_id: Any) -> Optional[dict]:
     if not isinstance(run_id, str) or not run_id.strip():
         return {
@@ -269,7 +301,7 @@ def _validate_run_id(run_id: Any) -> Optional[dict]:
             "errors": ["run_id must be a non-empty string"],
             "run_id": run_id,
         }
-    if ".." in run_id or "/" in run_id or "\\" in run_id:
+    if ".." in run_id or "/" in run_id or "\\" in run_id or "\x00" in run_id:
         return {
             "ok": False,
             "kind": "invalid_run_id",
@@ -281,8 +313,21 @@ def _validate_run_id(run_id: Any) -> Optional[dict]:
 
 def _inspect_journal(root: Path, target_str: str) -> dict:
     """Inspect and validate a ResidentRestartJournal directory or run_id."""
+    if "\x00" in str(target_str):
+        return {
+            "ok": False,
+            "kind": "invalid_run_id",
+            "error": f"Invalid run_id (null character prohibited): {target_str}",
+        }
     runs_dir = (root / "runs").resolve()
-    cand_runs = (runs_dir / target_str).resolve()
+    try:
+        cand_runs = (runs_dir / target_str).resolve()
+    except (OSError, ValueError):
+        return {
+            "ok": False,
+            "kind": "invalid_run_id",
+            "error": f"Invalid run_id: {target_str}",
+        }
     if not paths.inside_root(cand_runs, runs_dir):
         return {
             "ok": False,
@@ -337,11 +382,10 @@ def _inspect_journal(root: Path, target_str: str) -> dict:
         try:
             owner_data = json.loads(owner_path.read_text(encoding="utf-8"))
             pid = owner_data.get("pid")
-            if pid:
-                try:
-                    os.kill(pid, 0)
+            if isinstance(pid, int) and pid > 0:
+                if _pid_alive(pid):
                     is_locked = True
-                except (OSError, ProcessLookupError):
+                else:
                     is_stale_lock = True
         except Exception:
             pass
@@ -635,11 +679,32 @@ def submit_run(config, dry_run=True, resume_from=None, root=None):
             "stderr_tail": "",
         }
 
+    exec_argv = argv
+    if os.name == "nt":
+        import sys
+        launch_py = root / "tools" / "launch.py"
+        solver_dst = root / "src" / "torchfdtd"
+        solver_vendor = root / "vendor" / "torchfdtd" / "torchfdtd"
+        if not (solver_dst / "torchfdtd").is_dir() and solver_vendor.is_dir():
+            try:
+                os.symlink(solver_vendor.parent.resolve(), solver_dst, target_is_directory=True)
+            except OSError:
+                try:
+                    import _winapi
+                    _winapi.CreateJunction(str(solver_vendor.parent.resolve()), str(solver_dst))
+                except OSError:
+                    pass
+        py_exe = os.environ.get("PY") or sys.executable
+        exec_argv = [py_exe, "-B", "-u", str(launch_py), *argv[1:]]
+
     try:
         completed = subprocess.run(
-            argv,
+            exec_argv,
             cwd=str(root),
+            stdin=subprocess.DEVNULL,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             capture_output=True,
             check=False,
         )
@@ -733,9 +798,9 @@ def resume_run(run_id: str, dry_run: bool = True, additional_steps: int | None =
             config_val = m.get("config")
             if config_val:
                 try:
-                    config_rel = str(Path(config_val).resolve().relative_to(root))
+                    config_rel = Path(config_val).resolve().relative_to(root).as_posix()
                 except ValueError:
-                    config_rel = config_val
+                    config_rel = str(config_val).replace("\\", "/")
         except Exception:
             pass
 
@@ -774,14 +839,22 @@ def get_certificate(run_id: str, root=None) -> dict:
             "errors": ["run_id must be a non-empty string"],
             "run_id": run_id,
         }
-    if ".." in run_id or "/" in run_id or "\\" in run_id:
+    if ".." in run_id or "/" in run_id or "\\" in run_id or "\x00" in run_id:
         return {
             "ok": False,
             "kind": "invalid_run_id",
             "errors": [f"invalid characters in run_id: {run_id}"],
             "run_id": run_id,
         }
-    run_dir = (root / "runs" / run_id).resolve()
+    try:
+        run_dir = (root / "runs" / run_id).resolve()
+    except (OSError, ValueError):
+        return {
+            "ok": False,
+            "kind": "invalid_run_id",
+            "errors": [f"invalid run_id: {run_id}"],
+            "run_id": run_id,
+        }
     if not run_dir.is_dir() or not paths.inside_root(run_dir, root):
         return {
             "ok": False,
@@ -965,3 +1038,103 @@ def read_ledger(limit=20):
 
 def explain_exit(code):
     return exits.explain(code)
+
+
+def compile_experiment_ir(experiment_ir: dict, backend: str = "torchfdtd") -> dict:
+    """Validate and compile PhotonicExperimentIR."""
+    try:
+        from src.experiment_ir import PhotonicExperimentIR, UnsupportedBackendError
+        ir = PhotonicExperimentIR.from_dict(experiment_ir)
+        compiled = ir.compile_to(backend)
+        if hasattr(compiled, "model_dump"):
+            compiled_artifact = compiled.model_dump(mode="json")
+        else:
+            compiled_artifact = compiled
+        return {
+            "ok": True,
+            "backend": backend,
+            "compiled_artifact": compiled_artifact,
+            "error": None,
+            "error_code": None,
+        }
+    except UnsupportedBackendError as exc:
+        return {
+            "ok": False,
+            "backend": backend,
+            "compiled_artifact": None,
+            "error": str(exc),
+            "error_code": "UNSUPPORTED_BY_BACKEND",
+        }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "backend": backend,
+            "compiled_artifact": None,
+            "error": str(exc),
+            "error_code": "COMPILATION_ERROR",
+        }
+
+
+def submit_experiment(experiment: dict, dry_run: bool = True) -> dict:
+    """Submit multi-stage photonic experiment into SQLite WAL engine (runs/experiments.db)."""
+    from src.experiment_engine import ExperimentEngine
+    engine = ExperimentEngine()
+    return engine.submit(experiment, dry_run=dry_run)
+
+
+def query_experiment(experiment_id: str, stage_id: Optional[str] = None) -> dict:
+    """Query experiment and stage status from runs/experiments.db."""
+    from src.experiment_engine import ExperimentEngine
+    engine = ExperimentEngine()
+    return engine.query(experiment_id, stage_id=stage_id)
+
+
+def export_ro_crate(
+    claim_id: Optional[str] = None,
+    experiment_id: Optional[str] = None,
+    run_id: Optional[str] = None,
+    output_dir: Optional[str] = None,
+) -> dict:
+    """Export RO-Crate 1.1 package, enforcing fidelity gating."""
+    from src.ro_crate_export import RoCrateExporter, FidelityGateError
+    root = paths.project_root().resolve()
+    resolved_run = None
+    if run_id:
+        cand = (root / "runs" / run_id).resolve()
+        if cand.is_dir() and paths.inside_root(cand, root / "runs"):
+            resolved_run = cand
+    elif experiment_id:
+        from src.experiment_engine import ExperimentEngine
+        engine = ExperimentEngine(root=root)
+        resolved_run = engine.get_run_dir_for_experiment(experiment_id)
+
+    if not resolved_run or not resolved_run.is_dir():
+        return {
+            "ok": False,
+            "error": f"Could not resolve run directory for run_id={run_id}, experiment_id={experiment_id}",
+            "error_code": "RUN_NOT_FOUND",
+        }
+
+    try:
+        exporter = RoCrateExporter(run_dir=resolved_run)
+        meta_path = exporter.export(output_dir=output_dir, claim_id=claim_id)
+        return {
+            "ok": True,
+            "crate_dir": str(meta_path.parent),
+            "metadata_path": str(meta_path),
+            "error": None,
+        }
+    except FidelityGateError as exc:
+        return {
+            "ok": False,
+            "error": str(exc),
+            "error_code": "FIDELITY_GATE_VIOLATION",
+            "tamper_detected": True,
+        }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "error": str(exc),
+            "error_code": "EXPORT_FAILED",
+        }
+

@@ -1,0 +1,705 @@
+{
+  "format": "leg-criteria-index v1",
+  "extracted_from": "plan.md",
+  "legs": [
+    {
+      "leg": 1,
+      "goal": "`F0`+`F8` ONE COMMAND AND ONE REPORT (forward flow spine)",
+      "resource": null,
+      "exits": [
+        {
+          "command": "./tools/run.sh <one config> <one script>",
+          "exits": [
+            0
+          ]
+        },
+        {
+          "command": "./.venv/bin/python -m unittest discover -s checks -p 'test_*.py'",
+          "exits": []
+        }
+      ]
+    },
+    {
+      "leg": 2,
+      "goal": "`V2` INVARIANT CHECKS (the first numbers that can be called *verified*)",
+      "resource": null,
+      "exits": [
+        {
+          "command": "./tools/run.sh configs/leg1-objective.json src/leg1_objective.py",
+          "exits": [
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "leg": 3,
+      "goal": "`V1` ANALYTIC CASE LIBRARY",
+      "resource": null,
+      "exits": [
+        {
+          "command": "./tools/run.sh configs/leg1-objective.json src/leg1_objective.py",
+          "exits": [
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "leg": 4,
+      "goal": "`V3` CONVERGENCE LADDER AND COINCIDENCE GUARD",
+      "resource": null,
+      "exits": [
+        {
+          "command": "./tools/run.sh configs/leg1-objective.json src/leg1_objective.py",
+          "exits": [
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "leg": 5,
+      "goal": "`V5` UNITS AND NORMALISATION LEDGER",
+      "resource": null,
+      "exits": [
+        {
+          "command": "./tools/run.sh configs/leg1-objective.json src/leg1_objective.py",
+          "exits": [
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "leg": 6,
+      "goal": "`S2` FIBRE LATERAL-OVERLAP READOUT",
+      "resource": null,
+      "exits": [
+        {
+          "command": "./tools/run.sh configs/leg1-objective.json src/leg1_objective.py",
+          "exits": [
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "leg": 7,
+      "goal": "`S1` OBLIQUE ILLUMINATION VIA THE ARRAY SCANNING METHOD",
+      "resource": null,
+      "exits": [
+        {
+          "command": "./tools/run.sh configs/leg1-objective.json src/leg1_objective.py",
+          "exits": [
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "leg": 8,
+      "goal": "`S1` BFAST SCOPING ASSESSMENT (route switch, no implementation)",
+      "resource": null,
+      "exits": []
+    },
+    {
+      "leg": 9,
+      "goal": "`S1` ANGLE-SENSITIVITY TEST (does the measured drift matter?)",
+      "resource": null,
+      "exits": []
+    },
+    {
+      "leg": 10,
+      "goal": "TRUE 2-D SOURCE AND MONITOR COVERAGE",
+      "resource": null,
+      "exits": []
+    },
+    {
+      "leg": 11,
+      "goal": "PHYSICS-CHECK COVERAGE AUDIT (inventory only, no new check)",
+      "resource": null,
+      "exits": []
+    },
+    {
+      "leg": 12,
+      "goal": "`V2` WIRING FIX AND THE NON-EMPTY CLOSED BOX",
+      "resource": null,
+      "exits": []
+    },
+    {
+      "leg": 13,
+      "goal": "`S4` READOUT-DEFINITION LEDGER",
+      "resource": null,
+      "exits": []
+    },
+    {
+      "leg": 14,
+      "goal": "NEW ANALYTIC CASES: GRATING SINGLE ORDER, SLAB MODE",
+      "resource": null,
+      "exits": []
+    },
+    {
+      "leg": 15,
+      "goal": "ATTRIBUTE THE `7.5e-7` CLOSURE RESIDUAL",
+      "resource": null,
+      "exits": []
+    },
+    {
+      "leg": 16,
+      "goal": "`M1` THE `126 nm` TOOTH'S MESH CONVERGENCE",
+      "resource": null,
+      "exits": []
+    },
+    {
+      "leg": 17,
+      "goal": "`M1` REVERSAL MECHANISM: IS THE SMOOTHING RESOLUTION THE DRIVER?",
+      "resource": null,
+      "exits": []
+    },
+    {
+      "leg": 18,
+      "goal": "STANDING CONTROL SET: 48-CELL ABSORBER, TOLERANCE UNCHANGED",
+      "resource": null,
+      "exits": []
+    },
+    {
+      "leg": 19,
+      "goal": "`M3` THE ADMISSION MODEL OVER-RESERVES",
+      "resource": null,
+      "exits": []
+    },
+    {
+      "leg": 20,
+      "goal": "`O1` A REGISTERED `dt` RULE FOR GRADED GRIDS",
+      "resource": null,
+      "exits": []
+    },
+    {
+      "leg": 21,
+      "goal": "`O6` HIGHER-ORDER SPATIAL OPERATORS, ASSESSMENT ONLY",
+      "resource": null,
+      "exits": [
+        {
+          "command": "unittest discover -s checks -p 'test_leg21_o6_assessment.py'",
+          "exits": [
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "leg": 22,
+      "goal": "`M3` SUCCESSOR: THE PLANE-MODE ADMISSION PATH (`RESPLIT` OF LEG 19)",
+      "resource": null,
+      "exits": [
+        {
+          "command": null,
+          "exits": [
+            54
+          ]
+        }
+      ]
+    },
+    {
+      "leg": 23,
+      "goal": "wave-2 `W2`: gate on the RESERVED peak, and prove the kill condition can fire",
+      "resource": null,
+      "exits": [
+        {
+          "command": "unittest",
+          "exits": [
+            0
+          ]
+        },
+        {
+          "command": "./tools/run.sh",
+          "exits": [
+            0,
+            57
+          ]
+        },
+        {
+          "command": "git status --porcelain",
+          "exits": []
+        }
+      ]
+    },
+    {
+      "leg": 24,
+      "goal": "`M4` LIFT THE `uniform` RESTRICTION ON THE MODAL LAUNCH",
+      "resource": null,
+      "exits": [
+        {
+          "command": ".venv/bin/python -m unittest discover -s checks -p 'test_leg24_graded_modal.py'",
+          "exits": [
+            0
+          ]
+        },
+        {
+          "command": "flock -w 1800 /tmp/torchfdtd-gpu.lock ./tools/run.sh configs/leg24-uniform-baseline.json src/leg24_graded_modal.py",
+          "exits": [
+            0
+          ]
+        },
+        {
+          "command": null,
+          "exits": [
+            56
+          ]
+        },
+        {
+          "command": "flock -w 1800 /tmp/torchfdtd-gpu.lock ./tools/run.sh configs/leg24-graded-check.json src/leg24_graded_modal.py",
+          "exits": [
+            0
+          ]
+        },
+        {
+          "command": null,
+          "exits": [
+            57,
+            58,
+            55
+          ]
+        }
+      ]
+    },
+    {
+      "leg": 25,
+      "goal": "wave-2 `W3`: count the process's live allocations ONCE",
+      "resource": null,
+      "exits": [
+        {
+          "command": "unittest",
+          "exits": [
+            0
+          ]
+        },
+        {
+          "command": "./tools/run.sh",
+          "exits": [
+            54
+          ]
+        },
+        {
+          "command": null,
+          "exits": [
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "leg": 26,
+      "goal": "an out-of-scope case must not carry a `verified` label, and a shared rule ID must not share a verdict",
+      "resource": "neither",
+      "exits": [
+        {
+          "command": null,
+          "exits": [
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "leg": 27,
+      "goal": "\"no archived evidence\" must not print the same thing as \"everything passed\"",
+      "resource": "neither",
+      "exits": [
+        {
+          "command": "unittest",
+          "exits": [
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "leg": 28,
+      "goal": "a missing reference contract must be a declared refusal, not a traceback",
+      "resource": "neither",
+      "exits": [
+        {
+          "command": null,
+          "exits": [
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "leg": 29,
+      "goal": "satisfy LEG 26's frozen tests: the scope must gate the label, and one rule ID is not one case",
+      "resource": "neither",
+      "exits": [
+        {
+          "command": ".venv/bin/python -m unittest discover -s checks -p 'test_leg26_scope_and_rule_identity.py' -v",
+          "exits": [
+            0
+          ]
+        },
+        {
+          "command": ".venv/bin/python -m unittest discover -s checks",
+          "exits": [
+            0
+          ]
+        },
+        {
+          "command": "sha256sum checks/test_leg26_scope_and_rule_identity.py",
+          "exits": []
+        }
+      ]
+    },
+    {
+      "leg": 30,
+      "goal": "a readout that cannot be classified is a gap, not a crash and not a skip",
+      "resource": "neither",
+      "exits": [
+        {
+          "command": ".venv/bin/python -m unittest discover -s checks",
+          "exits": [
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "leg": 31,
+      "goal": "an out-of-memory run must never restore source into the shared fork",
+      "resource": "neither",
+      "exits": [
+        {
+          "command": null,
+          "exits": [
+            59
+          ]
+        },
+        {
+          "command": ".venv/bin/python -m unittest discover -s checks",
+          "exits": [
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "leg": 32,
+      "goal": "a diagnostics driver must not return success when its negative control is gone",
+      "resource": "neither",
+      "exits": [
+        {
+          "command": null,
+          "exits": [
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "leg": 33,
+      "goal": "the record must say what the fix changed in archived evidence",
+      "resource": "neither",
+      "exits": [
+        {
+          "command": "git diff --stat",
+          "exits": []
+        },
+        {
+          "command": "git diff -U0 docs/leg4-2026-10-18.md",
+          "exits": []
+        },
+        {
+          "command": ".venv/bin/python -m unittest discover -s checks",
+          "exits": [
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "leg": 34,
+      "goal": "satisfy LEG 32's frozen tests: the diagnostics driver must refuse when its negative control is gone",
+      "resource": "neither",
+      "exits": [
+        {
+          "command": ".venv/bin/python -B -m unittest discover -s checks -p 'test_leg15_exit_contract.py'",
+          "exits": [
+            0
+          ]
+        },
+        {
+          "command": "sha256sum checks/test_leg15_exit_contract.py",
+          "exits": []
+        },
+        {
+          "command": ".venv/bin/python -m unittest discover -s checks",
+          "exits": []
+        },
+        {
+          "command": "./tools/run.sh",
+          "exits": []
+        }
+      ]
+    },
+    {
+      "leg": 35,
+      "goal": "satisfy LEG 28's frozen tests: pre-flight must refuse a missing reference contract with `65`",
+      "resource": "neither",
+      "exits": [
+        {
+          "command": ".venv/bin/python -B -m unittest discover -s checks -p 'test_preflight_reference_policy.py'",
+          "exits": [
+            0
+          ]
+        },
+        {
+          "command": "sha256sum checks/test_preflight_reference_policy.py",
+          "exits": []
+        }
+      ]
+    },
+    {
+      "leg": 36,
+      "goal": "`M4` attribution: one x-refinement control, with the decision rule pre-declared",
+      "resource": null,
+      "exits": [
+        {
+          "command": "flock -w 1800 /tmp/torchfdtd-gpu.lock ./tools/run.sh configs/leg36-attribution.json src/leg36_attribution.py",
+          "exits": []
+        },
+        {
+          "command": null,
+          "exits": [
+            0,
+            56,
+            55
+          ]
+        }
+      ]
+    },
+    {
+      "leg": 37,
+      "goal": "the evidence-gap meta-check must be able to fail on the real declaration file",
+      "resource": "neither",
+      "exits": [
+        {
+          "command": null,
+          "exits": [
+            0
+          ]
+        },
+        {
+          "command": ".venv/bin/python -m unittest discover -s checks",
+          "exits": []
+        }
+      ]
+    },
+    {
+      "leg": 38,
+      "goal": "`M4` attribution, second line: is it material sampling or the `y` metric?",
+      "resource": null,
+      "exits": []
+    },
+    {
+      "leg": 39,
+      "goal": "the harness must run from a fresh clone, not only from a machine that already holds the state",
+      "resource": "neither",
+      "exits": [
+        {
+          "command": ".venv/bin/python -m unittest discover -s checks",
+          "exits": [
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "leg": 40,
+      "goal": "an MCP server so an AI client can drive the platform, and still be judged by exit status",
+      "resource": "neither",
+      "exits": [
+        {
+          "command": "python -m unittest discover -s mcptests",
+          "exits": [
+            0
+          ]
+        },
+        {
+          "command": null,
+          "exits": [
+            57
+          ]
+        },
+        {
+          "command": ".venv/bin/python -m unittest discover -s checks",
+          "exits": []
+        }
+      ]
+    },
+    {
+      "leg": 41,
+      "goal": "the MCP server must describe criteria in the tree a stranger gets",
+      "resource": "neither",
+      "exits": [
+        {
+          "command": "python -m unittest discover -s mcptests",
+          "exits": [
+            0
+          ]
+        },
+        {
+          "command": null,
+          "exits": [
+            0
+          ]
+        },
+        {
+          "command": "unittest discover -s checks",
+          "exits": []
+        }
+      ]
+    },
+    {
+      "leg": 42,
+      "goal": "WSL2 Environment, Fixture Restoration, Upward Git Traversal Hardening, and Unified Suite Verification",
+      "resource": "neither",
+      "exits": [
+        {
+          "command": ".venv/bin/python -m unittest discover -s checks",
+          "exits": [
+            0
+          ]
+        },
+        {
+          "command": ".venv/bin/python -m unittest discover -s mcptests",
+          "exits": [
+            0
+          ]
+        },
+        {
+          "command": ".venv/bin/python -m unittest discover -s checks && .venv/bin/python -m unittest discover -s mcptests",
+          "exits": [
+            0
+          ]
+        },
+        {
+          "command": null,
+          "exits": [
+            65
+          ]
+        }
+      ]
+    },
+    {
+      "leg": 43,
+      "goal": "Solver Kernel Telemetry and Launcher Post-Flight Notary (Exit 66 on Tamper)",
+      "resource": "fork",
+      "exits": [
+        {
+          "command": null,
+          "exits": [
+            66,
+            0,
+            53
+          ]
+        },
+        {
+          "command": ".venv/bin/python -m unittest discover -s checks && .venv/bin/python -m unittest discover -s mcptests",
+          "exits": [
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "leg": 44,
+      "goal": "Guided Poynting Box Enclosure Conservation (V2-box) and Energy Decay Notary (V2-decay)",
+      "resource": "neither",
+      "exits": []
+    },
+    {
+      "leg": 45,
+      "goal": "ResidentRestartJournal Checkpoint and Bit-Identical Resume",
+      "resource": "fork",
+      "exits": []
+    },
+    {
+      "leg": 46,
+      "goal": "Block-Fused Modal Injection, Zero-Allocation Observation Ring Buffer Kernel, and Verified Auto-Shutoff",
+      "resource": "fork",
+      "exits": []
+    },
+    {
+      "leg": 47,
+      "goal": "M1 Tooth Width Monotonic Convergence Restoration & M4 Graded Mesh Modal Injection Uniform Collar Zone",
+      "resource": "GPU",
+      "exits": []
+    },
+    {
+      "leg": 48,
+      "goal": "V4 Cross-Solver Automated Reconciliation with Meep/RCWA and Literature Benchmarks",
+      "resource": "GPU",
+      "exits": [
+        {
+          "command": "./tools/run.sh",
+          "exits": []
+        }
+      ]
+    },
+    {
+      "leg": 49,
+      "goal": "Track I Inverse Design Loop: d(eps)/d(rho) Jacobian & Grating Optimization with Step-by-Step Notary",
+      "resource": "GPU",
+      "exits": [
+        {
+          "command": "./tools/run.sh",
+          "exits": []
+        }
+      ]
+    },
+    {
+      "leg": 51,
+      "goal": "FDTD GPU Performance & Adjoint Memory Characterization",
+      "resource": "GPU",
+      "exits": []
+    },
+    {
+      "leg": 53,
+      "goal": "Calibrated Vector Mode Overlap & Continuous-Geometry Subpixel Etch-Bias",
+      "resource": "GPU",
+      "exits": []
+    },
+    {
+      "leg": 54,
+      "goal": "Two-Tier Numerical Error Budget & `ScientificClaim` Falsification Gate",
+      "resource": "GPU",
+      "exits": [
+        {
+          "command": null,
+          "exits": [
+            66
+          ]
+        }
+      ]
+    },
+    {
+      "leg": 55,
+      "goal": "Solver-Agnostic `PhotonicExperimentIR` & SQLite WAL Authoritative Experiment Engine",
+      "resource": "neither",
+      "exits": []
+    },
+    {
+      "leg": 56,
+      "goal": "GDS/PDK Dual-Equivalence Delivery Loop",
+      "resource": "GPU",
+      "exits": []
+    },
+    {
+      "leg": 57,
+      "goal": "Isolated-Evaluator SciAgent Falsification Benchmark & Ablation Study",
+      "resource": "GPU",
+      "exits": []
+    }
+  ]
+}

@@ -1,9 +1,9 @@
 ---
 name: agent-fdtd
-description: AgentFDTD (v1.0.1) — Machine-verified electromagnetic FDTD simulation, photonic inverse design, and post-flight notary platform built on TorchFDTD v1.1.7. Use this skill when modeling 2D/3D optical structures, running forward or adjoint FDTD simulations, resuming checkpoints, or verifying energy conservation and cross-solver parity via MCP tools or CLI.
+description: AgentFDTD (v2.0.0) — Machine-verified electromagnetic FDTD simulation, photonic inverse design, scientific claim adjudication, and GDS delivery platform built on TorchFDTD. Use this skill when modeling 2D/3D optical structures, running forward or adjoint FDTD simulations, evaluating scientific claims, exporting GDS layouts, or verifying energy conservation and cross-solver parity via MCP tools or CLI.
 ---
 
-# AgentFDTD (`agent-fdtd` v1.0.1) — Agent Skill Guide
+# AgentFDTD (`agent-fdtd` v2.0.0) — Agent Skill Guide
 
 This repository provides a **zero-trust, machine-verified FDTD photonic simulation and inverse-design platform** driven via an MCP (Model Context Protocol) server (`agent-fdtd-mcp` / `torchfdtd-platform-mcp`) or the single-entry launcher (`./tools/run.sh`).
 
@@ -53,6 +53,10 @@ When opening this repository in an MCP-capable coding agent (Claude Code, Antigr
 | `validate_config` | Run `checks/pre_environment.py` pre-flight check without starting a simulation | `config` |
 | `read_ledger` | Read the last `N` rows from `runs/ledger.jsonl` | `limit` (default `20`) |
 | `explain_exit` | Decode any platform/driver exit status into structured meaning | `code` (integer) |
+| `create_experiment` | Register a solver-agnostic photonic experiment definition (`TorchFDTD`/`RCWA`/`Meep`/`GDS`) | `ir_payload`, `backend` |
+| `evaluate_claim` | Evaluate a scientific claim under two-tier numerical uncertainty budgeting | `claim_payload` |
+| `export_gds` | Export device geometry to `.gds` with PDK DRC and readback physical verification | `experiment_id`, `output_path` |
+| `export_evidence_bundle` | Export experiment runs, lineage, and certificates into an RO-Crate 1.1 archive | `experiment_id`, `output_dir` |
 
 ## 3. Direct CLI Execution & Key Capabilities
 
@@ -62,22 +66,17 @@ All simulations execute through `./tools/run.sh <config> <script> [args...]`:
 # Spine self-test (audit mode, fast CPU verification)
 ./tools/run.sh configs/selftest-spine.json src/selftest_spine.py
 
-# Inverse design with end-to-end FDTD gradient verification, M3 discrete re-simulation & Armijo line search
-./tools/run.sh configs/leg49-inverse-design.json src/leg49_inverse_design.py
-
-# Cross-solver reconciliation (TorchFDTD vs Meep & TORCWA RCWA)
-./tools/run.sh configs/leg48-reconciliation.json src/leg48_reconciliation.py
-
 # Run platform verification & MCP test suites
 .venv/bin/python -m unittest discover -s checks
 .venv/bin/python -m unittest discover -s mcptests
 ```
 
-### Solver Capabilities Included (`src/torchfdtd`)
-- **Differentiable Inverse Design & M3 Fabrication Verification (`src/leg49_inverse_design.py`, `src/leg49_m3_constraints.py`)**: 3-tier M3 conic filtering, smooth $\tanh$ projection, discrete morphological opening/closing ($\ge 150\text{ nm}$, zero violations), end-to-end FDTD directional Taylor gradient verification ($\le 10^{-6}$), and FDTD re-simulation of the realized discrete binary grating.
-- **Reversible Lorentz Dispersive Adjoint (`v1.1.7`)**: Exact time-reversal and periodic/recorded CPML adjoint gradients for isotropic Lorentz media and two-material density mixtures (`torchfdtd/reversible_lorentz.py`), plus discrete FDTD dispersion fitting (`fit_discrete_lorentz` in `torchfdtd/material_fit.py`).
-- **Sources & Boundaries**: Plane-wave, Bloch periodic, Angular Spectrum Method (ASM) oblique Gaussian beam (`src/oblique_asm.py`, Vitali non-paraxial Gaussian in `torchfdtd/injection.py`), uniform & graded modal launch (`torchfdtd/mode_branches.py`), and vendor-aligned SC-PML (`torchfdtd/vendor_scpml.py`).
-- **Dual-Slot Checkpoint Journal**: Crash-safe, bit-identical checkpointing and resume (`torchfdtd/resident_restart.py`).
+### Declared Platform Capabilities
+- **Differentiable Inverse Design & Fabrication Verification**: End-to-end differentiable photonic inverse design with minimum feature-size constraints, continuous fabrication etch-bias evaluation, and independent forward FDTD re-simulation.
+- **Batched Forward & Adjoint GPU Execution**: Shared-topology multi-structure forward and adjoint batching with automated checkpoint budget management.
+- **Scientific Claim Verification & Experiment Lineage**: Two-tier numerical uncertainty budgeting, automated 4-state scientific claim adjudication, multi-backend experiment representation, and RO-Crate 1.1 evidence bundle export.
+- **GDSII / PDK Delivery Loop**: SOI layer-stack mapping, design-rule checking (DRC), `.gds` export/import, and independent FDTD physical equivalence verification on readback polygons.
+- **Crash-Safe Checkpointing**: Bit-identical checkpointing and mid-run resume.
 
 ## 4. Exit Status Contract
 

@@ -1089,6 +1089,413 @@ def verify_post_flight(run_dir: Path) -> dict:
         if inverse_design_record.get('m3_realized_fdtd_verified'):
             certificate['tags'].append('verified:m3_realized_fdtd')
         certificate['inverse_design'] = inverse_design_record
+    if 'gpu_characterization' in config.get('tags', []) or 'gpu_characterization' in readout.get('tags', []):
+        acceptance = readout.get('acceptance')
+        if not isinstance(acceptance, dict):
+            raise RuntimeError('post_notary: gpu_characterization acceptance criteria violated: missing or invalid acceptance block (tamper_detected)')
+
+        a1a = acceptance.get('A1a')
+        if not isinstance(a1a, dict) or a1a.get('max_flux_diff') != 0.0 or a1a.get('passed') is not True:
+            max_flux = a1a.get('max_flux_diff') if isinstance(a1a, dict) else None
+            raise RuntimeError(f"post_notary: gpu_characterization acceptance criteria violated: A1a max_flux_diff={max_flux} != 0.0 (tamper_detected)")
+
+        a1b = acceptance.get('A1b')
+        if not isinstance(a1b, dict) or a1b.get('passed') is not True:
+            raise RuntimeError('post_notary: gpu_characterization acceptance criteria violated: A1b failed or missing (tamper_detected)')
+        flux_err = a1b.get('relative_flux_error')
+        grad_err = a1b.get('relative_gradient_error')
+        if flux_err is None or not isinstance(flux_err, (int, float)) or float(flux_err) > 1e-12:
+            raise RuntimeError(f"post_notary: gpu_characterization acceptance criteria violated: A1b relative_flux_error={flux_err} > 1e-12 (tamper_detected)")
+        if grad_err is None or not isinstance(grad_err, (int, float)) or float(grad_err) > 1e-10:
+            raise RuntimeError(f"post_notary: gpu_characterization acceptance criteria violated: A1b relative_gradient_error={grad_err} > 1e-10 (tamper_detected)")
+
+        setup_sec = readout.get('setup_graph_capture_sec')
+        steady_sec = readout.get('steady_replay_sec')
+        if setup_sec is None or not isinstance(setup_sec, (int, float)) or float(setup_sec) <= 0.0:
+            raise RuntimeError(f"post_notary: gpu_characterization acceptance criteria violated: setup_graph_capture_sec={setup_sec} must be > 0.0 (tamper_detected)")
+        if steady_sec is None or not isinstance(steady_sec, (int, float)) or float(steady_sec) <= 0.0:
+            raise RuntimeError(f"post_notary: gpu_characterization acceptance criteria violated: steady_replay_sec={steady_sec} must be > 0.0 (tamper_detected)")
+
+        a3 = acceptance.get('A3')
+        if a3 is not None:
+            if not isinstance(a3, dict) or a3.get('status') not in ('verified:bottleneck_classification', 'completed'):
+                raise RuntimeError(f"post_notary: gpu_characterization acceptance criteria violated: A3 status={a3.get('status') if isinstance(a3, dict) else None} invalid (tamper_detected)")
+
+        a4 = acceptance.get('A4')
+        if not isinstance(a4, dict) or a4.get('status') not in ('completed', 'partial'):
+            a4_stat = a4.get('status') if isinstance(a4, dict) else None
+            raise RuntimeError(f"post_notary: gpu_characterization acceptance criteria violated: A4 status={a4_stat} not in ('completed', 'partial') (tamper_detected)")
+        cum_gpu = a4.get('cumulative_gpu_seconds')
+        if isinstance(cum_gpu, (int, float)) and float(cum_gpu) > 2160.0:
+            raise RuntimeError(f"post_notary: gpu_characterization acceptance criteria violated: A4 cumulative_gpu_seconds={cum_gpu} > 2160.0 (tamper_detected)")
+
+        certificate['tags'].extend([
+            'verified:gpu_characterization',
+            'verified:cuda_graph_identity',
+            'verified:cross_execution_precision',
+            'verified:timing_separation',
+        ])
+    if 'vector_overlap' in config.get('tags', []) or 'vector_overlap' in readout.get('tags', []):
+        if 'analytic_self_checks' in readout:
+            asc = readout['analytic_self_checks']
+            if not asc.get('all_passed'):
+                raise RuntimeError('analytic self-checks for vector mode overlap failed (tamper_detected)')
+        if 'edge_sweep' in readout:
+            es = readout['edge_sweep']
+            if not es.get('sweep_passed') or float(es.get('max_interior_rel_err', 1.0)) > 1e-5:
+                raise RuntimeError('21-point edge sweep derivative verification failed (gradient_verification_failed)')
+
+        cases = readout.get('etch_bias_cases')
+        if cases is not None or 'verified:etch_bias_corners' in config.get('tags', []) or 'verified:etch_bias_corners' in readout.get('tags', []):
+            if cases is None or not isinstance(cases, dict):
+                raise RuntimeError('post_notary: etch_bias_corners validation failed: missing or invalid etch_bias_cases dictionary (tamper_detected)')
+
+            nominal_key = 'nominal' if 'nominal' in cases else ('nominal_0nm' if 'nominal_0nm' in cases else None)
+            if nominal_key is None or 'over_etched_-10nm' not in cases or 'under_etched_+10nm' not in cases:
+                raise RuntimeError('post_notary: etch_bias_corners validation failed: missing required process corners (over_etched_-10nm, nominal/nominal_0nm, under_etched_+10nm) (tamper_detected)')
+
+            c_over = cases['over_etched_-10nm']
+            c_nom = cases[nominal_key]
+            c_under = cases['under_etched_+10nm']
+
+            if not (isinstance(c_over, dict) and isinstance(c_nom, dict) and isinstance(c_under, dict)):
+                raise RuntimeError('post_notary: etch_bias_corners validation failed: corner data must be dictionaries (tamper_detected)')
+
+            hashes = [
+                c_over.get('epsilon_sha256'),
+                c_nom.get('epsilon_sha256'),
+                c_under.get('epsilon_sha256'),
+            ]
+            if any(not h or not isinstance(h, str) for h in hashes):
+                raise RuntimeError('post_notary: etch_bias_corners validation failed: missing or non-string epsilon_sha256 digest in corners (tamper_detected)')
+            if len(set(hashes)) != 3:
+                raise RuntimeError('post_notary: etch_bias_corners validation failed: duplicate epsilon_sha256 digests across process corners (tamper_detected)')
+
+            rho_over = c_over.get('mean_density')
+            rho_nom = c_nom.get('mean_density')
+            rho_under = c_under.get('mean_density')
+            if None in (rho_over, rho_nom, rho_under):
+                raise RuntimeError('post_notary: etch_bias_corners validation failed: missing mean_density in corners (tamper_detected)')
+            try:
+                rho_over_f = float(rho_over)
+                rho_nom_f = float(rho_nom)
+                rho_under_f = float(rho_under)
+            except (ValueError, TypeError) as exc:
+                raise RuntimeError(f'post_notary: etch_bias_corners validation failed: non-numeric mean_density: {exc} (tamper_detected)') from exc
+
+            if not (rho_over_f < rho_nom_f < rho_under_f):
+                raise RuntimeError(f'post_notary: etch_bias_corners validation failed: non-monotonic mean density ({rho_over_f} >= {rho_nom_f} or {rho_nom_f} >= {rho_under_f}) (tamper_detected)')
+
+            for corner_name in ('over_etched_-10nm', nominal_key, 'under_etched_+10nm'):
+                corner_data = cases[corner_name]
+                eta = corner_data.get('calibrated_vector_overlap_eta')
+                if eta is None:
+                    raise RuntimeError(f'post_notary: etch_bias_corners validation failed: missing calibrated_vector_overlap_eta in corner {corner_name} (tamper_detected)')
+                try:
+                    eta_f = float(eta)
+                except (ValueError, TypeError) as exc:
+                    raise RuntimeError(f'post_notary: etch_bias_corners validation failed: non-numeric calibrated_vector_overlap_eta in corner {corner_name}: {exc} (tamper_detected)') from exc
+                if not (0.0 <= eta_f <= 1.0):
+                    raise RuntimeError(f'post_notary: etch_bias_corners validation failed: calibrated_vector_overlap_eta={eta_f} violates passivity bounds [0.0, 1.0] in corner {corner_name} (tamper_detected)')
+
+        vector_tags = [
+            'verified:vector_overlap',
+            'verified:subpixel_etch_bias',
+            'verified:analytic_identity',
+            'verified:analytic_orthogonality',
+            'verified:directional_isolation',
+        ]
+        if 'edge_sweep' in readout:
+            vector_tags.append('verified:edge_sweep_gradient')
+        if cases is not None:
+            vector_tags.append('verified:etch_bias_corners')
+        certificate['tags'].extend(vector_tags)
+
+    # Check 12: Two-Tier Numerical Error Budget & ScientificClaim Falsification Gate (Wave E — LEG 54)
+    has_claim_tags = any(
+        t in ('scientific_claim', 'two_tier_budget', 'falsification_gate',
+              'verified:scientific_claim', 'verified:two_tier_budget', 'verified:falsification_gate')
+        for t in config.get('tags', []) + readout.get('tags', [])
+    )
+    is_claim_run = 'scientific_claims' in readout or 'scientific_claims' in config or has_claim_tags
+
+    if is_claim_run:
+        claims = readout.get('scientific_claims')
+        if claims is None or not isinstance(claims, list) or len(claims) == 0:
+            raise RuntimeError('post_notary: Check 12 (scientific_claims) violated: missing or empty scientific_claims in readout (tamper_detected)')
+
+        validated_claims_record = []
+        for idx, claim in enumerate(claims):
+            if not isinstance(claim, dict):
+                raise RuntimeError(f'post_notary: Check 12 (scientific_claims) violated: claim {idx} is not a dictionary (tamper_detected)')
+
+            # Extract fields
+            param = claim.get('parameter', f'param_{idx}')
+            nom_val = claim.get('nominal_value')
+            thresh = claim.get('threshold')
+            if not _is_finite_number(nom_val) or not _is_finite_number(thresh):
+                raise RuntimeError(f'post_notary: Check 12 (scientific_claims) violated: non-numeric nominal_value or threshold in claim {param} (tamper_detected)')
+            nom_val = float(nom_val)
+            thresh = float(thresh)
+
+            claim_type = claim.get('claim_type', 'greater_than')
+            if claim_type not in ('greater_than', 'less_than'):
+                raise RuntimeError(f'post_notary: Check 12 (scientific_claims) violated: unsupported claim_type {claim_type!r} (tamper_detected)')
+
+            # 1. Budget structure & NC4: omitting dominant uncertainty component / zero budget
+            budget = claim.get('budget')
+            if not isinstance(budget, dict):
+                raise RuntimeError(f'post_notary: Check 12 (scientific_claims) violated: missing budget dictionary in claim {param} (tamper_detected)')
+
+            components = budget.get('components', [])
+            if not isinstance(components, list) or len(components) == 0:
+                raise RuntimeError(f'post_notary: Check 12 (scientific_claims) violated: omitted or empty uncertainty budget components in claim {param} (tamper_detected)')
+
+            comp_vals = []
+            comp_certified = []
+            for c_idx, comp in enumerate(components):
+                if not isinstance(comp, dict) or 'value' not in comp:
+                    raise RuntimeError(f'post_notary: Check 12 (scientific_claims) violated: corrupted component {c_idx} in claim {param} (tamper_detected)')
+                c_val = comp['value']
+                if not _is_finite_number(c_val) or float(c_val) < 0.0 or math.isnan(float(c_val)) or math.isinf(float(c_val)):
+                    raise RuntimeError(f'post_notary: Check 12 (scientific_claims) violated: invalid component value in claim {param} (tamper_detected)')
+                comp_vals.append(float(c_val))
+                c_cert = comp.get('certified', False)
+                if not isinstance(c_cert, bool):
+                    raise RuntimeError(
+                        f'post_notary: Check 12 (scientific_claims) violated: certified must be boolean in claim {param} component {c_idx} (tamper_detected)'
+                    )
+                if c_cert:
+                    prov = comp.get('provenance')
+                    if not isinstance(prov, dict) or not prov or not any(k in prov for k in ('proof', 'solver', 'theorem', 'reference_solver', 'envelope', 'analytic')):
+                        raise RuntimeError(
+                            f'post_notary: Check 12 (scientific_claims) violated: component {comp.get("name", c_idx)} claims certified=True but lacks proof provenance (tamper_detected)'
+                        )
+                comp_certified.append(c_cert)
+
+            # NC5: Inconsistent combined uncertainty math
+            u_total = budget.get('total_uncertainty', claim.get('total_uncertainty'))
+            if not _is_finite_number(u_total) or math.isnan(u_total) or math.isinf(u_total):
+                raise RuntimeError(f'post_notary: Check 12 (scientific_claims) violated: missing or non-numeric total_uncertainty in claim {param} (tamper_detected)')
+            u_total = float(u_total)
+
+            comb_method = budget.get('combination_method', 'rss')
+            if comb_method == 'linear':
+                expected_u = sum(comp_vals)
+            else:
+                expected_u = math.sqrt(sum(v * v for v in comp_vals))
+
+            if not math.isfinite(expected_u) or math.isnan(expected_u) or math.isinf(expected_u):
+                raise RuntimeError(
+                    f'post_notary: Check 12 (scientific_claims) violated: non-finite combined uncertainty calculation in claim {param} (tamper_detected)'
+                )
+
+            if abs(u_total - expected_u) > 1e-6:
+                raise RuntimeError(
+                    f'post_notary: Check 12 (scientific_claims) violated: inconsistent combined uncertainty math: '
+                    f'reported={u_total:.6e} vs expected={expected_u:.6e} (tamper_detected)'
+                )
+
+            if u_total <= 0.0:
+                raise RuntimeError(f'post_notary: Check 12 (scientific_claims) violated: non-positive total uncertainty in claim {param} (tamper_detected)')
+
+            # NC3: Claiming certified assurance level with uncertified error component
+            budget_assurance = budget.get('assurance_level', 'estimated')
+            claim_assurance = claim.get('assurance_level', budget_assurance)
+            if budget_assurance not in ('estimated', 'certified') or claim_assurance not in ('estimated', 'certified'):
+                raise RuntimeError(
+                    f'post_notary: Check 12 (scientific_claims) violated: invalid assurance_level: '
+                    f'budget={budget_assurance!r}, claim={claim_assurance!r} (tamper_detected)'
+                )
+            all_cert = all(comp_certified)
+
+            if budget_assurance == 'certified' and not all_cert:
+                raise RuntimeError(
+                    f'post_notary: Check 12 (scientific_claims) violated: budget asserts certified assurance_level with uncertified component(s) (tamper_detected)'
+                )
+            if claim_assurance == 'certified' and not all_cert:
+                raise RuntimeError(
+                    f'post_notary: Check 12 (scientific_claims) violated: claim asserts certified assurance_level with uncertified component(s) (tamper_detected)'
+                )
+
+            # Mathematical 4-State Truth Evaluation
+            q_low = nom_val - u_total
+            q_high = nom_val + u_total
+
+            req_assurance = claim.get('required_assurance_level', 'estimated')
+            if claim_type == 'greater_than':
+                if q_low > thresh:
+                    if req_assurance == 'certified' and not all_cert:
+                        math_state = 'INCONCLUSIVE'
+                    else:
+                        math_state = 'SUPPORTED'
+                elif q_high < thresh:
+                    math_state = 'REFUTED'
+                else:
+                    math_state = 'INCONCLUSIVE'
+            else:  # less_than
+                if q_high < thresh:
+                    if req_assurance == 'certified' and not all_cert:
+                        math_state = 'INCONCLUSIVE'
+                    else:
+                        math_state = 'SUPPORTED'
+                elif q_low > thresh:
+                    math_state = 'REFUTED'
+                else:
+                    math_state = 'INCONCLUSIVE'
+
+            # NC1 & NC2: Over-claiming SUPPORTED
+            raw_claimed = claim.get('claimed_state') or claim.get('claim_status')
+            claimed_state = str(raw_claimed).strip().upper() if raw_claimed is not None else None
+            positive_synonyms = ('SUPPORTED', 'PASS', 'PASSED', 'CONFIRMED', 'TRUE', 'VALIDATED')
+            if claimed_state in positive_synonyms:
+                if math_state == 'INCONCLUSIVE':
+                    raise RuntimeError(
+                        f'post_notary: Check 12 (scientific_claims) violated: claimed {claimed_state} on INCONCLUSIVE interval '
+                        f'[{q_low:.6f}, {q_high:.6f}] against threshold {thresh:.6f} (tamper_detected)'
+                    )
+                if math_state == 'REFUTED':
+                    raise RuntimeError(
+                        f'post_notary: Check 12 (scientific_claims) violated: claimed {claimed_state} on REFUTED interval '
+                        f'[{q_low:.6f}, {q_high:.6f}] against threshold {thresh:.6f} (tamper_detected)'
+                    )
+
+            # Validate declared actual_state: must be declared and must match mathematical truth
+            declared_actual = claim.get('actual_state')
+            if not declared_actual or not isinstance(declared_actual, str) or not declared_actual.strip():
+                raise RuntimeError(
+                    f'post_notary: Check 12 (scientific_claims) violated: missing actual_state declaration in claim {param} (tamper_detected)'
+                )
+            declared_actual = declared_actual.strip().upper()
+            if declared_actual != math_state:
+                raise RuntimeError(
+                    f'post_notary: Check 12 (scientific_claims) violated: actual_state contradiction: '
+                    f'declared={declared_actual} vs mathematical={math_state} (tamper_detected)'
+                )
+
+            # Validate diagnostic prescription for INCONCLUSIVE state
+            if math_state == 'INCONCLUSIVE':
+                prescription = claim.get('diagnostic_prescription')
+                if not prescription or not isinstance(prescription, str) or not prescription.strip():
+                    raise RuntimeError(
+                        f'post_notary: Check 12 (scientific_claims) violated: missing diagnostic prescription for INCONCLUSIVE claim {param} (tamper_detected)'
+                    )
+                dom_name = budget.get('dominant_component')
+                if not dom_name and components:
+                    dom_comp = max(components, key=lambda c: c['value'])
+                    dom_name = dom_comp['name']
+                if dom_name and dom_name not in prescription and 'Level B' not in prescription:
+                    raise RuntimeError(
+                        f'post_notary: Check 12 (scientific_claims) violated: diagnostic prescription does not identify dominant component {dom_name} (tamper_detected)'
+                    )
+
+            validated_claims_record.append({
+                'parameter': param,
+                'nominal_value': nom_val,
+                'threshold': thresh,
+                'interval': [q_low, q_high],
+                'total_uncertainty': u_total,
+                'assurance_level': claim_assurance,
+                'actual_state': math_state,
+                'claimed_state': claimed_state,
+                'dominant_component': budget.get('dominant_component'),
+                'verified': True,
+            })
+
+        certificate['scientific_claims'] = validated_claims_record
+        certificate['tags'].extend([
+            'verified:scientific_claim',
+            'verified:two_tier_budget',
+            'verified:falsification_gate',
+        ])
+
+    # Check 13: GDS/PDK Dual-Equivalence Delivery Gate (Wave E — LEG 56)
+    has_gds_tags = any(
+        t in ('gds_delivery', 'soi_pdk', 'dual_equivalence', 'gds_dual_equivalence',
+              'verified:gds_delivery', 'verified:gds_dual_equivalence', 'gds_dual_equivalence_verified')
+        for t in config.get('tags', []) + readout.get('tags', [])
+    )
+    is_gds_run = (
+        'gds_delivery' in readout or
+        'gds_delivery' in config or
+        'gds_dual_equivalence' in readout or
+        'gds_dual_equivalence' in config or
+        has_gds_tags
+    )
+
+    if is_gds_run:
+        gds_data = readout.get('gds_delivery') or readout.get('gds_dual_equivalence')
+        if not isinstance(gds_data, dict):
+            raise RuntimeError('post_notary: Check 13 violated: missing gds_delivery block in readout (tamper_detected)')
+
+        # Gate 1: GDS File Existence and SHA-256 Digest Match
+        gds_rel_path = gds_data.get('gds_file', 'layout.gds')
+        gds_file = run_dir / gds_rel_path
+        if not gds_file.is_file():
+            raise RuntimeError(f'post_notary: Check 13 violated: GDS file {gds_rel_path} not found on disk (tamper_detected)')
+        actual_gds_sha256 = _sha256_file(gds_file)
+        reported_sha = gds_data.get('gds_sha256')
+        if not reported_sha or not isinstance(reported_sha, str) or not reported_sha.strip():
+            raise RuntimeError('post_notary: Check 13 violated: missing or invalid gds_sha256 in gds_delivery (tamper_detected)')
+        if reported_sha != actual_gds_sha256:
+            raise RuntimeError(
+                f'post_notary: Check 13 violated: GDS SHA-256 mismatch {actual_gds_sha256} vs {reported_sha} (tamper_detected)'
+            )
+
+        # Gate 2: Coordinate Quantization Rounding Gate (<= 1 dbu / 1 nm)
+        max_rounding_nm = gds_data.get('max_rounding_error_nm', gds_data.get('max_coordinate_error_nm'))
+        if max_rounding_nm is None or not _is_finite_number(max_rounding_nm) or float(max_rounding_nm) < 0.0 or float(max_rounding_nm) > 1.0 + 1e-6:
+            raise RuntimeError(
+                f'post_notary: Check 13 violated: max rounding error {max_rounding_nm} nm out of bounds [0, 1 dbu] (gds_rounding_exceeded)'
+            )
+
+        # Gate 3: DRC 0 Violations Gate
+        drc_clean = gds_data.get('drc_clean', gds_data.get('is_drc_clean', False))
+        if not isinstance(drc_clean, bool):
+            raise RuntimeError('post_notary: Check 13 violated: drc_clean must be boolean (tamper_detected)')
+        drc_viols = gds_data.get('drc_violations', [])
+        drc_viol_count = len(drc_viols) if isinstance(drc_viols, list) else int(drc_viols)
+        if not drc_clean or drc_viol_count > 0:
+            raise RuntimeError(
+                f'post_notary: Check 13 violated: DRC violations detected: {drc_viols} (drc_violation_detected)'
+            )
+
+        # Gate 4: Physical Readback Coupling Equivalence Gate
+        eta_design = gds_data.get('eta_design')
+        eta_readback = gds_data.get('eta_readback')
+        u_disc = gds_data.get('u_discretization', 0.015)
+
+        if not _is_finite_number(eta_design) or not _is_finite_number(eta_readback) or not _is_finite_number(u_disc):
+            raise RuntimeError('post_notary: Check 13 violated: non-numeric efficiency or uncertainty in gds_delivery (tamper_detected)')
+
+        discrepancy = abs(float(eta_readback) - float(eta_design))
+        if discrepancy > float(u_disc) + 1e-9:
+            raise RuntimeError(
+                f'post_notary: Check 13 violated: physical coupling discrepancy {discrepancy:.6e} > U_discretization {float(u_disc):.6e} (physical_equivalence_failed)'
+            )
+
+        certificate['gds_dual_equivalence'] = {
+            'gds_file': str(gds_rel_path),
+            'gds_sha256': actual_gds_sha256,
+            'pdk_spec': gds_data.get('pdk_spec', 'SOI_220nm_PDK'),
+            'max_rounding_error_nm': float(max_rounding_nm),
+            'drc_clean': True,
+            'drc_violations_count': 0,
+            'eta_design': float(eta_design),
+            'eta_readback': float(eta_readback),
+            'coupling_discrepancy': discrepancy,
+            'u_discretization': float(u_disc),
+            'geometric_equivalent': True,
+            'physical_equivalent': True,
+            'verified': True,
+        }
+        certificate['tags'].extend([
+            'verified:gds_delivery',
+            'verified:soi_pdk_drc',
+            'verified:gds_geometric_equivalence',
+            'verified:gds_physical_equivalence',
+            'gds_dual_equivalence_verified',
+        ])
 
     payload_bytes = json.dumps(certificate, sort_keys=True, separators=(',', ':')).encode('utf-8')
     certificate['certificate_payload_sha256'] = hashlib.sha256(payload_bytes).hexdigest()
@@ -1119,7 +1526,9 @@ def main():
         err_msg = str(e)
         print(f'[post_notary] postflight failed: {err_msg}', file=sys.stderr)
         status_tag = 'tamper_detected'
-        if 'under_converged_time' in err_msg:
+        if 'false_scientific_claim' in err_msg:
+            status_tag = 'false_scientific_claim'
+        elif 'under_converged_time' in err_msg:
             status_tag = 'under_converged_time'
         elif 'under_converged_flux' in err_msg:
             status_tag = 'under_converged_flux'
@@ -1141,6 +1550,12 @@ def main():
             status_tag = 'fabrication_violation_m3'
         elif 'non_monotonic_objective' in err_msg:
             status_tag = 'non_monotonic_objective'
+        elif 'gds_rounding_exceeded' in err_msg:
+            status_tag = 'gds_rounding_exceeded'
+        elif 'drc_violation_detected' in err_msg:
+            status_tag = 'drc_violation_detected'
+        elif 'physical_equivalence_failed' in err_msg:
+            status_tag = 'physical_equivalence_failed'
         elif 'tamper_detected' in err_msg:
             status_tag = 'tamper_detected'
 

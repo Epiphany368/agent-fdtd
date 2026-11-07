@@ -36,8 +36,12 @@ __all__ += ['write_fsp_geometry', 'write_fsp_scene']
 from .optical_data import OpticalData
 from .material_fit import FitOptions, MaterialFitResult, fit_material, material_fit_report
 __all__ += ['OpticalData', 'FitOptions', 'MaterialFitResult', 'fit_material', 'material_fit_report']
-from .differentiable import AdjointOptions, DifferentiableSimulation, DifferentiableResult, smooth_sphere_epsilon
-__all__ += ['AdjointOptions', 'DifferentiableSimulation', 'DifferentiableResult', 'smooth_sphere_epsilon']
+from .differentiable import (AdjointOptions, DifferentiableSimulation, DifferentiableResult, smooth_sphere_epsilon,
+                             select_optimal_adjoint_options, count_recompute_steps)
+__all__ += ['AdjointOptions', 'DifferentiableSimulation', 'DifferentiableResult', 'smooth_sphere_epsilon',
+            'select_optimal_adjoint_options', 'count_recompute_steps']
+from .cuda_batch import FusedBatchYeeCUDA, FusedBatchIO, FusedBatchTransposeYeeCUDA, TensorPermittivityBatchAdapter
+__all__ += ['FusedBatchYeeCUDA', 'FusedBatchIO', 'FusedBatchTransposeYeeCUDA', 'TensorPermittivityBatchAdapter']
 from .adjoint_memory import estimate_adjoint_memory
 __all__ += ['estimate_adjoint_memory']
 from .adjoint_spectrum import DifferentiableSpectrum
@@ -102,7 +106,7 @@ __all__ += ['StreamedDensityLayer', 'streamed_density_layer', 'StreamedDensitySi
             'StreamedDensityPlaneSimulation']
 from .design_parameterization import DensityParameterization
 from .gds import GDSLayer, GDSPortLayer, GDSPort, GDSLimits, GDSImport, import_gds, export_gds
-from .mode_ports import WaveguideMode, solve_waveguide_modes, mode_power_overlap, normalized_mode_power
+from .mode_ports import WaveguideMode, solve_waveguide_modes, mode_power_overlap, normalized_mode_power, yee_3d_modal_beta
 from .mode_injection import (ModalLaunch, prepare_modal_launch, ModeInjectedPlaneSimulation,
                              modal_plane_amplitudes, modal_s_parameters)
 from .radiation import (DiffractionResult, diffraction_orders, diffraction_efficiency,
@@ -206,3 +210,22 @@ from .fabrication import (FeatureSizes, measure_feature_sizes, fabrication_pertu
 from .design_problem import Continuation, DesignProblem
 __all__ += ["bounded_density_layer", "FeatureSizes", "measure_feature_sizes", "fabrication_perturbation",
             "binary_structures", "morphological_open", "square_offsets", "Continuation", "DesignProblem"]
+from .subpixel_waveguide import (
+    build_safe_evanescent_graded_axis,
+    conformal_variant0_cross_section,
+    conformal_variant0_strip_rib_3d,
+    make_conformal_variant0_section,
+)
+from .auto_shutoff import (
+    AutoShutoff,
+    install_auto_shutoff,
+    restore_auto_shutoff,
+)
+from .inverse_design import (
+    DesignRegionDFTAccumulator,
+    SeedScore,
+    assess_forward_step,
+    escape_local_minimum_perturbation,
+    propose_minmax_lp_step,
+    screen_waveguide_seeds_2d,
+)

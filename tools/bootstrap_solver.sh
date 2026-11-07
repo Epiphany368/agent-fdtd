@@ -39,13 +39,26 @@ fi
 }
 
 REAL=$(cd "$SRC" && pwd -P)
-ln -sfn "$REAL" "$LINK"
+if ! ln -sfn "$REAL" "$LINK" 2>/dev/null; then
+    rm -rf "$LINK"
+    if command -v cygpath >/dev/null 2>&1 && cmd //c mklink //J "$(cygpath -w "$LINK")" "$(cygpath -w "$REAL")" >/dev/null 2>&1; then
+        :
+    else
+        cp -a "$REAL" "$LINK"
+    fi
+fi
 echo "solver ($ROLE): $LINK -> $REAL"
 
-if [ -x "$ROOT/.venv/bin/python" ]; then
+if [ -n "${PY:-}" ] && [ -x "$PY" ]; then
+    :
+elif [ -x "$ROOT/.venv/bin/python" ]; then
     PY="$ROOT/.venv/bin/python"
+elif [ -x "$ROOT/.venv/Scripts/python.exe" ]; then
+    PY="$ROOT/.venv/Scripts/python.exe"
 elif command -v python3 >/dev/null 2>&1; then
     PY=python3
+elif command -v python >/dev/null 2>&1; then
+    PY=python
 else
     echo "pre-flight: no python available to check the import" >&2
     exit 65

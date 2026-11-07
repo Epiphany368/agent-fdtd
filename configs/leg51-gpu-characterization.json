@@ -1,0 +1,23 @@
+{
+  "task": "Wave E LEG 51: FDTD GPU Performance & Adjoint Memory Characterization on RTX 5070 Ti",
+  "kind": "benchmark",
+  "precision": "float64",
+  "wavelength_um": 1.55,
+  "budget_gpu_hours": 0.6,
+  "scales": [
+    {"name": "small", "shape": [80, 40, 1]},
+    {"name": "medium", "shape": [300, 120, 1]},
+    {"name": "large", "shape": [600, 240, 1]}
+  ],
+  "steps_list": [1000, 5000, 20000],
+  "graph_widths": [1, 4, 16, 32, 64],
+  "checkpoints_list": [2, 4, 8, 16],
+  "checkpoint_tiers": ["device", "host", "hierarchical"],
+  "tags": [
+    "gpu_characterization",
+    "verified:cuda_graph_identity",
+    "verified:cross_execution_precision",
+    "verified:timing_separation",
+    "verified:bottleneck_classification"
+  ]
+}

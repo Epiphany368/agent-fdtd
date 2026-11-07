@@ -6,6 +6,7 @@ adjoint_planes. Only propagating real-beta modes of positive isotropic epsilon
 are returned. Eigenvalues and mode profiles are NOT differentiable.
 """
 from dataclasses import dataclass, replace
+import inspect
 import math
 
 import numpy as np
@@ -16,6 +17,120 @@ C0 = 299792458.
 COMPONENTS = ('Ex', 'Ey', 'Ez', 'Hx', 'Hy', 'Hz')
 
 
+def _canonical_electric_pivot(electric, shape=None):
+    """Select a deterministic phase pivot, preferring the (+u, +v) half-plane on near-ties."""
+    mags = np.abs(electric)
+    peak = float(np.max(mags))
+    if peak <= 0 or shape is None:
+        return electric[np.argmax(mags)]
+    n = shape[0] * shape[1]
+    idx0 = int(np.argmax(mags))
+    candidates = np.flatnonzero(mags >= (1.0 - 1e-6) * peak)
+    if len(candidates) > 1:
+        def _key(idx):
+            idx = int(idx)
+            rem = idx % n
+            u_idx, v_idx = rem // shape[1], rem % shape[1]
+            return (
+                int(idx // n == idx0 // n),
+                int(u_idx >= shape[0] // 2),
+                int(v_idx >= shape[1] // 2),
+                u_idx,
+                v_idx,
+            )
+        best = max(candidates, key=_key)
+        return electric[int(best)]
+    return electric[idx0]
+
+
+def _sample_permittivity_component(permittivity, coords, global_axis, shape, dtype):
+    """Sample isotropic or diagonal-anisotropic permittivity at a single E component."""
+    comp = ('Ex', 'Ey', 'Ez')[global_axis]
+    if callable(permittivity):
+        try:
+            sig = inspect.signature(permittivity)
+            params = list(sig.parameters.values())
+            pos = [p for p in params if p.kind in (
+                inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)]
+            accepts_comp = (
+                len(pos) >= 3
+                and (pos[2].default is inspect.Parameter.empty
+                     or pos[2].name in ('comp', 'component', 'field', 'axis'))
+            )
+        except (ValueError, TypeError):
+            accepts_comp = False
+        value = permittivity(*coords, comp) if accepts_comp else permittivity(*coords)
+    else:
+        value = permittivity
+    if hasattr(value, 'detach'):
+        if getattr(value, 'requires_grad', False):
+            from .ports import FixedPortSectionError
+            raise FixedPortSectionError('Port cross-sections are fixed. Trainable profile tensors are unsupported.')
+        value = value.detach().cpu().numpy()
+    if np.iscomplexobj(value):
+        raise ValueError('Only real positive isotropic permittivity is supported.')
+    arr = np.asarray(value, dtype=dtype)
+    if arr.ndim == len(shape) + 1 and arr.shape[-1] == 3:
+        arr = arr[..., global_axis]
+    values = np.broadcast_to(arr, shape).copy()
+    if not np.isfinite(values).all() or np.min(values) <= 0:
+        raise ValueError('Permittivity must be finite and positive.')
+    return values
+
+
+def yee_3d_modal_beta(mode_or_beta_tilde, wavelength_um=None, dw_um=None, dt_s=None):
+    """Predict the 3D FDTD space-time discrete propagation constant beta_FDTD (in 1/um).
+
+    Solves:
+      (sin(beta_FDTD * dw / 2) / (dw / 2))^2
+        = beta_tilde^2 + (sin(omega * dt / 2) / (c * dt / 2))^2 - k0^2
+    When `mode_or_beta_tilde` is a `ModalLaunch` / `ApertureModalLaunch` and both
+    `dw_um` and `dt_s` are omitted, returns its pre-solved 3D space-time `beta_per_um`.
+    """
+    if hasattr(mode_or_beta_tilde, 'beta_tilde_per_um') and hasattr(mode_or_beta_tilde, 'mode'):
+        if dw_um is None and dt_s is None:
+            return float(np.real(mode_or_beta_tilde.mode.beta_per_um))
+        if dw_um is None and hasattr(mode_or_beta_tilde, 'normal_step_um'):
+            dw_um = float(mode_or_beta_tilde.normal_step_um)
+        if wavelength_um is None:
+            wavelength_um = float(mode_or_beta_tilde.mode.wavelength_um)
+        if dt_s is None:
+            beta_eff = float(np.real(mode_or_beta_tilde.beta_tilde_per_um))
+            if dw_um is not None and dw_um > 0:
+                ratio = beta_eff * float(dw_um) / 2.0
+                if not 0.0 < ratio < 1.0:
+                    raise ValueError('Mode exceeds the longitudinal Yee propagation band.')
+                return float(2.0 * math.asin(ratio) / float(dw_um))
+            return beta_eff
+
+    if hasattr(mode_or_beta_tilde, 'beta_per_um'):
+        beta_tilde = float(np.real(mode_or_beta_tilde.beta_per_um))
+        if wavelength_um is None and hasattr(mode_or_beta_tilde, 'wavelength_um'):
+            wavelength_um = float(mode_or_beta_tilde.wavelength_um)
+    else:
+        beta_tilde = float(np.real(mode_or_beta_tilde))
+
+    if wavelength_um is None or not math.isfinite(wavelength_um) or wavelength_um <= 0:
+        raise ValueError('wavelength_um must be positive and finite.')
+    k0 = 2.0 * math.pi / float(wavelength_um)
+    if dt_s is not None and dt_s > 0:
+        omega = 2.0 * math.pi * C0 / (float(wavelength_um) * 1e-6)
+        kt = 2.0 * math.sin(0.5 * omega * float(dt_s)) / (C0 * float(dt_s)) * 1e-6
+    else:
+        kt = k0
+
+    rhs_sq = beta_tilde * beta_tilde + kt * kt - k0 * k0
+    if rhs_sq <= 0:
+        raise ValueError('Predicted space-time transverse wavevector is evanescent.')
+    beta_eff = math.sqrt(rhs_sq)
+    if dw_um is not None and dw_um > 0:
+        ratio = 0.5 * beta_eff * float(dw_um)
+        if not 0.0 < ratio < 1.0:
+            raise ValueError('Mode exceeds the longitudinal Yee propagation band.')
+        return float(2.0 * math.asin(ratio) / float(dw_um))
+    return float(beta_eff)
+
+
 def _difference(n, spacing, dtype):
     rows = np.arange(n)
     plus = sparse.coo_matrix((np.r_[-np.ones(n), np.ones(n)].astype(dtype),
@@ -23,7 +138,7 @@ def _difference(n, spacing, dtype):
     return plus, -plus.T
 
 
-def _canonical_degenerate_basis(pairs, n, area, tol):
+def _canonical_degenerate_basis(pairs, n, area, tol, shape=None):
     """Rotate each cluster of equal-beta modes onto a platform-independent basis.
 
     ARPACK returns an arbitrary basis of a degenerate eigenspace, and which
@@ -55,7 +170,7 @@ def _canonical_degenerate_basis(pairs, n, area, tol):
                     if not np.isfinite(power) or power<=0:
                         raise ValueError('Degenerate mode rotation produced a mode without positive power.')
                     vector /= math.sqrt(power)
-                    pivot = vector[:2*n][np.argmax(np.abs(vector[:2*n]))]
+                    pivot = _canonical_electric_pivot(vector[:2*n], shape)
                     vector *= np.exp(-1j*np.angle(pivot))
                     rotated.append(vector)
                 for offset,vector in enumerate(rotated):
@@ -178,9 +293,9 @@ def solve_waveguide_modes(permittivity, *, shape, spacing_um, wavelength_um,
                           precision='float32', tolerance=None, maxiter=3000):
     """Solve coupled full-vector modes in an explicitly periodic supercell.
 
-    permittivity is a positive real scalar or callable epsilon(u_um,v_um).
-    One scalar material function is sampled separately at Eu, Ev and Ew Yee
-    positions. An arbitrary diagonal tensor is intentionally not accepted.
+    permittivity is a positive real scalar, a precomputed (*shape, 3) diagonal
+    Yee array in global (Ex, Ey, Ez) order, or a callable epsilon(u_um, v_um)
+    or epsilon(u_um, v_um, comp).
     Isolated guides require padding/box convergence and confinement checks.
     FP32 sparse matrices/ARPACK are default. FP64 is an explicit diagnostic.
     """
@@ -203,16 +318,13 @@ def solve_waveguide_modes(permittivity, *, shape, spacing_um, wavelength_um,
     tol = (2e-6 if precision=='float32' else 1e-10) if tolerance is None else tolerance
     if not np.isfinite(tol) or tol<=0:
         raise ValueError('tolerance must be positive and finite.')
+    w = 'xyz'.index(normal)
+    local_to_global = ((w+1)%3, (w+2)%3, w)
     sampled = []
-    for offsets in ((.5,0.),(0.,.5),(0.,0.)):
+    for local, offsets in enumerate(((.5,0.),(0.,.5),(0.,0.))):
         axes = [origin_um[a]+(np.arange(shape[a])+offsets[a])*spacing_um[a] for a in range(2)]
         coords = np.meshgrid(*axes,indexing='ij')
-        value = permittivity(*coords) if callable(permittivity) else permittivity
-        if np.iscomplexobj(value):
-            raise ValueError('Only real positive isotropic permittivity is supported.')
-        values = np.broadcast_to(np.asarray(value,dtype=dtype),shape).copy()
-        if not np.isfinite(values).all() or np.min(values)<=0:
-            raise ValueError('Permittivity must be finite and positive.')
+        values = _sample_permittivity_component(permittivity, coords, local_to_global[local], shape, dtype)
         sampled.append(values.ravel())
     eu,ev,ew = [sparse.diags(v,format='csr') for v in sampled]
     inverse_ew = sparse.diags(1/sampled[2],format='csr')
@@ -261,10 +373,10 @@ def solve_waveguide_modes(permittivity, *, shape, spacing_um, wavelength_um,
             raise ValueError('Mode has zero/negative power or a dependent degenerate eigenvector.')
         transverse /= math.sqrt(power)
         electric,magnetic = transverse[:2*n],transverse[2*n:]
-        pivot = electric[np.argmax(np.abs(electric))]
+        pivot = _canonical_electric_pivot(electric, shape)
         transverse *= np.exp(-1j*np.angle(pivot))
         previous.append((beta,transverse.copy()))
-    previous = _canonical_degenerate_basis(previous,n,area,tol)
+    previous = _canonical_degenerate_basis(previous,n,area,tol,shape=shape)
     for beta,transverse in previous:
         electric,magnetic = transverse[:2*n],transverse[2*n:]
         elu,elv = electric[:n],electric[n:]
@@ -281,8 +393,7 @@ def solve_waveguide_modes(permittivity, *, shape, spacing_um, wavelength_um,
                       np.linalg.norm(curl_h+1j*k*epsilon_e)/(k*np.linalg.norm(epsilon_e)))
         if residual>max(100*tol,2e-4) or maxwell>max(100*tol,2e-4):
             raise RuntimeError('Computed mode fails the eigenpair/Maxwell residual criterion. Refine eigensolver tolerance or diagnose precision.')
-        w = 'xyz'.index(normal)
-        axes = ((w+1)%3,(w+2)%3,w)
+        axes = local_to_global
         fields = np.empty((*shape,6),dtype=cdtype)
         for local,global_axis in enumerate(axes):
             fields[...,global_axis] = all_e.reshape(3,*shape)[local]

@@ -33,7 +33,7 @@ class OpenModeOperators:
     boundary_kinds: tuple
 
 
-def plan_open_mode_operators(region, normal, wavelength_um):
+def plan_open_mode_operators(region, normal, wavelength_um, *, longitudinal_step_um=None):
     """Validate metadata and bound operator preparation before sparse allocation.
 
     This reservation excludes epsilon, P/Q assembly, eigensolver and LU storage.
@@ -47,11 +47,18 @@ def plan_open_mode_operators(region, normal, wavelength_um):
             or not math.isfinite(wavelength_um) or wavelength_um <= 0):
         raise ValueError('wavelength_um must be a fixed positive finite scalar.')
     r = Region.model_validate(region.model_dump())
-    if (r.dimension != '3d' or r.precision != 'float32' or r.mesh_type != 'uniform'
+    if (r.dimension != '3d' or r.precision != 'float32'
             or r.material_sampling != 'yee' or r.interface_method != 'staircase'
             or r.complex_fields):
-        raise ValueError('Open modes require uniform 3D real FP32 Yee staircase metadata.')
+        raise ValueError('Open modes require 3D real FP32 Yee staircase metadata.')
     w = 'xyz'.index(normal)
+    widths = np.diff(r.mesh_nodes[w])
+    if longitudinal_step_um is None:
+        if not np.allclose(widths,widths[0],rtol=1e-10,atol=1e-12):
+            raise ValueError('Nonuniform longitudinal mesh requires an explicit local uniform port step.')
+        longitudinal_step_um = float(widths[0])
+    if not np.isfinite(longitudinal_step_um) or longitudinal_step_um <= 0:
+        raise ValueError('A positive finite local longitudinal step is required.')
     axes = ((w+1)%3, (w+2)%3)
     kinds = []
     for axis in axes:
@@ -66,10 +73,8 @@ def plan_open_mode_operators(region, normal, wavelength_um):
         raise ValueError('Carrier frequency must be below temporal Nyquist.')
     shape = tuple(r.shape[a] for a in axes)
     spacing = tuple(float(r.axis_steps[a]) for a in axes)
-    origin = tuple(-float(r.actual_size[a])/2 for a in axes)
-    bounds = tuple((origin[i]+r.pml_layers(a,0)*spacing[i],
-                    origin[i]+(shape[i]-r.pml_layers(a,1))*spacing[i])
-                   for i,a in enumerate(axes))
+    origin = tuple(float(r.mesh_nodes[a][0]) for a in axes)
+    bounds = tuple(r.interior_bounds(a) for a in axes)
     n = math.prod(shape)
     # Four 2N-stencil CSR matrices plus simultaneous COO/Kronecker conversion,
     # coefficients and conservative packing/index allocation allowance.
@@ -78,7 +83,7 @@ def plan_open_mode_operators(region, normal, wavelength_um):
         sort_keys=True, separators=(',', ':')).encode()).hexdigest()
     return dict(n=n, shape=shape, spacing_um=spacing, origin_um=origin,
         physical_bounds_um=bounds, transverse_axes=axes, boundary_kinds=tuple(kinds),
-        longitudinal_spacing_um=float(r.axis_steps[w]),
+        longitudinal_spacing_um=float(longitudinal_step_um),
         temporal_k_per_um=2*math.sin(omega_dt/2)/(299792458.*r.time_step)*1e-6,
         omega_dt=omega_dt, region_signature=signature, dtype=np.dtype('complex64'),
         required_workspace_bytes=required, workspace_bytes=required,
@@ -103,7 +108,17 @@ def _axis_operator(region, description, axis, forward, omega_dt):
         # Round coefficients exactly as the native FP32 state preparation does.
         gain[loc] = (inv_k.astype(np.complex128)
                      +c.astype(np.complex128)/(1-b.astype(np.complex128)*np.exp(1j*omega_dt))).astype(np.complex64)
-    scale = gain[rows]/np.float32(region.axis_steps[axis])
+    if region.mesh_type == 'uniform':
+        # Preserve the released uniform operator, including its FP32 rounding.
+        scale = gain[rows]/np.float32(region.axis_steps[axis])
+    else:
+        # Match the native Yee curl: forward differences use primal cell
+        # widths, backward differences use the adjacent half-cell sum.
+        # This primitive does not enable the full nonuniform modal API; its
+        # eigensolver, sampling and normalization still need separate work.
+        widths = np.diff(region.mesh_nodes[axis])
+        distances = widths if forward else (widths + np.roll(widths, 1))/2
+        scale = gain[rows]/distances[rows].astype(np.float32)
     diagonal = -scale if forward else scale
     other = scale if forward else -scale
     return sparse.coo_matrix((np.concatenate((diagonal,other)),
@@ -119,9 +134,9 @@ def _readonly(matrix):
     return matrix
 
 
-def prepare_open_mode_operators(region, *, normal, wavelength_um):
+def prepare_open_mode_operators(region, *, normal, wavelength_um, longitudinal_step_um=None):
     """Prepare independent staggered plus/minus CSR derivatives, no eigensolve."""
-    plan = plan_open_mode_operators(region,normal,wavelength_um)
+    plan = plan_open_mode_operators(region,normal,wavelength_um,longitudinal_step_um=longitudinal_step_um)
     r = Region.model_validate(region.model_dump())
     description = BoundaryDescription(r)
     axes = plan['transverse_axes']

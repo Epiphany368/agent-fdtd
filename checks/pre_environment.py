@@ -46,6 +46,7 @@ def resolve(value, env_name):
 
 def git(solver, *args):
     return subprocess.check_output(['git', '-C', str(solver), *args], text=True,
+                                   encoding='utf-8', errors='replace',
                                    stderr=subprocess.DEVNULL).strip()
 
 
@@ -132,8 +133,8 @@ if 'PARITY_CONFIG' not in os.environ:
         raise SystemExit(64)
 else:
     root = ROOT
-    pin = json.loads((root / 'configs/baseline-pin.json').read_text())
-    config = json.loads(Path(os.environ['PARITY_CONFIG']).read_text())
+    pin = json.loads((root / 'configs/baseline-pin.json').read_text(encoding='utf-8'))
+    config = json.loads(Path(os.environ['PARITY_CONFIG']).read_text(encoding='utf-8'))
 
     assert config.get('task'), 'Every run needs a step number in task'
     assert config.get('kind') in ('canary', 'benchmark', 'alignment', 'audit',

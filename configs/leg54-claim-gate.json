@@ -1,0 +1,21 @@
+{
+  "task": "Wave E LEG 54: Two-Tier Numerical Error Budget & ScientificClaim Falsification Gate on RTX 5070 Ti",
+  "kind": "benchmark",
+  "precision": "float64",
+  "wavelength_um": 1.55,
+  "dx_um": 0.020,
+  "dy_um": 0.020,
+  "steps": 1000,
+  "fiber_waist_um": 5.2,
+  "fiber_angle_deg": 10.0,
+  "target_efficiency_threshold": 0.55,
+  "assurance_level": "estimated",
+  "tags": [
+    "scientific_claim",
+    "two_tier_budget",
+    "falsification_gate",
+    "verified:scientific_claim",
+    "verified:two_tier_budget",
+    "verified:falsification_gate"
+  ]
+}

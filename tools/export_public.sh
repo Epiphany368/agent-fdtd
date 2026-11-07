@@ -62,16 +62,11 @@ INCLUDE=(
     .mcp.json
     requirements.txt
     pyproject.toml
-    STATUS.md
-    PROVENANCE.md
     src
     checks
     configs
     tools
     mcp_server
-    mcptests
-    docs
-    output
     runs/ledger.jsonl
 )
 
@@ -123,14 +118,16 @@ for entry in "${INCLUDE[@]}"; do
     cp -a "$entry" "$DEST/$entry"
     copied=$((copied + 1))
 done
+rm -f "$DEST/checks"/test_*.py
+rm -rf "$DEST/checks/fixtures"
 
 # The criteria index. plan.md is private, but a published tree must still answer
 # "what was this leg's pre-declared criterion?"  The index is extracted, never
 # hand-written; a failed extraction makes the export unpublishable.
 PY="${PY:-$ROOT/.venv/bin/python}"
 [ -x "$PY" ] || PY=$(command -v python3)
-[ -x "$PY" ] || { echo "export_public: python unavailable; cannot extract docs/leg-criteria.json" >&2; exit 69; }
-if ! "$PY" -B "$ROOT/mcp_server/plan.py" "$ROOT/plan.md" "$DEST/docs/leg-criteria.json"; then
+[ -x "$PY" ] || { echo "export_public: python unavailable; cannot extract configs/leg-criteria.json" >&2; exit 69; }
+if ! "$PY" -B "$ROOT/mcp_server/plan.py" "$ROOT/plan.md" "$DEST/configs/leg-criteria.json"; then
     echo "export_public: criteria index extraction failed; the export is not publishable" >&2
     exit 65
 fi
@@ -152,7 +149,7 @@ if [ "$BUNDLE_SOLVER" -eq 1 ]; then
     }
     echo "export_public: bundling merged solver from $SOLVER_REAL -> $DEST/vendor/torchfdtd"
     mkdir -p "$DEST/vendor/torchfdtd"
-    for item in LICENSE THIRD_PARTY_NOTICES.txt CITATION.cff README.md pyproject.toml torchfdtd examples tests; do
+    for item in LICENSE THIRD_PARTY_NOTICES.txt CITATION.cff README.md pyproject.toml torchfdtd; do
         if [ -e "$SOLVER_REAL/$item" ]; then
             cp -a "$SOLVER_REAL/$item" "$DEST/vendor/torchfdtd/$item"
         fi
@@ -194,22 +191,12 @@ done
 # Verify. Any remaining absolute home path is a leak and fails the export.
 leaks=$(find_leaks | wc -l)
 
-{
-    echo "public export of $COMMIT"
-    echo
-    echo "included:"
-    for entry in "${INCLUDE[@]}"; do echo "  $entry"; done
-    echo
-    echo "excluded, and why:"
-    for note in "${EXCLUDE_NOTE[@]}"; do echo "  $note"; done
-} > "$DEST/EXPORT-MANIFEST.txt"
-
 if [ "$WITH_GIT" -eq 1 ]; then
     git -C "$DEST" init -q -b main
     git -C "$DEST" add -A
     GIT_AUTHOR_NAME="torchfdtd-platform" GIT_AUTHOR_EMAIL="noreply@example.com" \
     GIT_COMMITTER_NAME="torchfdtd-platform" GIT_COMMITTER_EMAIL="noreply@example.com" \
-        git -C "$DEST" commit -q -m "AgentFDTD 1.0.1: one command, verifiable acceptance
+        git -C "$DEST" commit -q -m "AgentFDTD 2.0.0: one command, verifiable acceptance
 
 Public tree exported from the working repository at $COMMIT.
 The solver is a dependency (MIT-licensed torchfdtd), not bundled."

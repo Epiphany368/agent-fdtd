@@ -413,11 +413,15 @@ def criteria_for(config_path, plan_path=None):
     """Return ``{"criteria": [...], "criteria_text": str, "criteria_source": str}``."""
     if plan_path:
         plan_path = Path(plan_path)
-        index_path = plan_path.parent / "docs" / "leg-criteria.json"
+        root = plan_path.parent
     else:
         root = Path(config_path).resolve().parents[1]
         plan_path = root / "plan.md"
-        index_path = root / "docs" / "leg-criteria.json"
+    index_path = (
+        root / "configs" / "leg-criteria.json"
+        if (root / "configs" / "leg-criteria.json").is_file()
+        else root / "docs" / "leg-criteria.json"
+    )
     leg = leg_from_config(config_path)
     if leg is None:
         return {
@@ -429,10 +433,11 @@ def criteria_for(config_path, plan_path=None):
     entry, data = _index_entry(index_path, leg)
     if entry is not None:
         criteria = _index_criteria(entry)
+        rel_src = index_path.relative_to(root).as_posix()
         return {
             "criteria": criteria,
             "criteria_text": "\n".join(criteria),
-            "criteria_source": f"docs/leg-criteria.json#leg-{leg}",
+            "criteria_source": f"{rel_src}#leg-{leg}",
             "criteria_note": None,
         }
     try:

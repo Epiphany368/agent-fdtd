@@ -3,6 +3,8 @@
 No tool calls a model. No tool decides acceptance. ``submit_run`` starts
 ``tools/run.sh`` and returns its process exit status unchanged.
 """
+import os
+
 from mcp.server.fastmcp import FastMCP
 
 from . import platform
@@ -18,7 +20,13 @@ a model and no tool grants acceptance.
 """
 
 
-def build_server(host="127.0.0.1", port=8787):
+def _should_include_experiments(explicit_flag: bool | None = None) -> bool:
+    if explicit_flag is not None:
+        return explicit_flag
+    return os.environ.get("TORCHFDTD_EXPERIMENT_TOOLS") == "1"
+
+
+def build_server(host="127.0.0.1", port=8787, include_experiments: bool | None = None):
     server = FastMCP(
         "torchfdtd-platform-mcp",
         instructions=INSTRUCTIONS,
@@ -190,4 +198,69 @@ def build_server(host="127.0.0.1", port=8787):
         """
         return platform.get_certificate(run_id)
 
+    if _should_include_experiments(include_experiments):
+        @server.tool()
+        def compile_experiment_ir(
+            experiment_ir: dict,
+            backend: str = "torchfdtd",
+        ) -> dict:
+            """Compile a PhotonicExperimentIR specification to target solver backend (torchfdtd, rcwa, gds, meep).
+
+            Returns {ok: bool, backend: str, compiled_artifact: dict | str, error: str | None, error_code: str | None}.
+            Explicitly refuses unsupported conversions (e.g. non-periodic structures targeting RCWA)
+            with ok=False and error_code='UNSUPPORTED_BY_BACKEND'.
+            """
+            return platform.compile_experiment_ir(experiment_ir, backend)
+
+        @server.tool()
+        async def submit_experiment(
+            experiment: dict,
+            dry_run: bool = True,
+        ) -> dict:
+            """Submit multi-stage photonic experiment into SQLite WAL engine (runs/experiments.db).
+
+            In dry_run=True, validates IR, pre-flight gates, and execution stages without starting processes.
+            In dry_run=False, records experiment and stages atomically, acquires worker lease fencing token,
+            and dispatches execution.
+            """
+            import anyio
+
+            return await anyio.to_thread.run_sync(
+                platform.submit_experiment, experiment, dry_run
+            )
+
+        @server.tool()
+        def query_experiment(
+            experiment_id: str,
+            stage_id: str | None = None,
+        ) -> dict:
+            """Query authoritative SQLite WAL engine (runs/experiments.db) for experiment and stage states.
+
+            Returns {ok: bool, experiment_id: str, status: str, stages: list[dict], worker_lease: dict,
+            fencing_token: int, pending_outbox_records: int}.
+            """
+            return platform.query_experiment(experiment_id, stage_id)
+
+        @server.tool()
+        def export_ro_crate(
+            claim_id: str | None = None,
+            experiment_id: str | None = None,
+            run_id: str | None = None,
+            output_dir: str | None = None,
+        ) -> dict:
+            """Export W3C/RO-Crate 1.1 JSON-LD evidence package (ro-crate-metadata.json).
+
+            Packages experiment IR, execution telemetry, driver readout, notary verification certificates,
+            scientific claims, and git provenance.
+            Enforces screening run fidelity gate: strictly blocks fidelity_level <= 1 runs from supporting claims.
+            """
+            return platform.export_ro_crate(
+                claim_id=claim_id,
+                experiment_id=experiment_id,
+                run_id=run_id,
+                output_dir=output_dir,
+            )
+
     return server
+
+

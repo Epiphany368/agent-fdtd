@@ -1,0 +1,18 @@
+{
+  "task": "Wave E LEG 52: Batched Differentiable Transpose Yee Kernels, TensorPermittivityBatchAdapter & Checkpoint Optimizer",
+  "kind": "benchmark",
+  "precision": "float64",
+  "batch_size": 4,
+  "steps": 1000,
+  "budget_gpu_hours": 0.5,
+  "cuda_kernel": "fused",
+  "test_budgets_mb": [400, 1000, 4000, 16000],
+  "tags": [
+    "batched_adjoint",
+    "verified:frozen_bit_identical",
+    "verified:forward_flux_batch_equivalence",
+    "verified:batched_adjoint_gradient_equivalence",
+    "verified:zero_cross_instance_crosstalk",
+    "verified:checkpoint_optimizer_budget_compliance"
+  ]
+}

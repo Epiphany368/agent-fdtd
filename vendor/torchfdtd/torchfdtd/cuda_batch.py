@@ -12,7 +12,7 @@ from types import SimpleNamespace
 import numpy as np
 import torch
 
-from .boundaries import face_index
+from .boundaries import face_index, CURL_TERMS
 from .cuda_kernels import FusedYeeCUDA, _compile
 from .solver import index_at
 
@@ -168,3 +168,570 @@ extern "C" __global__ void batch_record(const long long* tasks, long long* count
     def record(self):
         with self.cp.cuda.Device(self.device),self._stream():
             self.record_kernel((1,),(256,),(self.monitor_view,self.counter_view,np.int32(self.n_monitors)))
+
+
+class FusedBatchTransposeYeeCUDA:
+    """Shared CUDA launches for batched curl-transpose adjoint Yee updates.
+
+    The second CUDA grid dimension (blockIdx.y) selects the batch instance.
+    Pointer tables preserve independent adjoint fields, CPML memories, and
+    material gradient accumulators with zero cross-instance crosstalk (NC1).
+    """
+
+    def __init__(
+        self,
+        systems,
+        gradients,
+        signal_bars,
+        *,
+        direct_views: bool = False,
+        buffers: object | None = None,
+        material_gradient: bool = True,
+        electric_seeds: list[torch.Tensor] | None = None,
+        curl_permittivities: list[torch.Tensor] | None = None,
+    ):
+        import cupy
+        self.cp = cupy
+        self.direct_views = direct_views
+        self.buffers = buffers
+        self.systems = list(systems)
+        self.batch_size = len(self.systems)
+        self.device = self.systems[0].device.index
+        self.gradients = list(gradients)
+        self.signal_bars = [sb.contiguous() for sb in signal_bars]
+        self.material_gradient = material_gradient
+
+        if curl_permittivities is None:
+            self.epsilons = [s.eps4.detach().contiguous() for s in self.systems]
+        else:
+            self.epsilons = [cp.detach().contiguous() for cp in curl_permittivities]
+
+        allocate = lambda name, value: buffers.zeros(name, value) if buffers is not None else torch.zeros_like(value)
+        self.e_bars = [allocate(f'bar:E:{b}', s.grid.E) for b, s in enumerate(self.systems)]
+        self.h_bars = [allocate(f'bar:H:{b}', s.grid.H) for b, s in enumerate(self.systems)]
+        self.electric_seeds = self.e_bars if electric_seeds is None else electric_seeds
+
+        self.psi_bars = [
+            [
+                tuple(allocate(f'bar:psi:{phase}:{b}:{i}', s.segments[i]['psi']) for i in range(len(s.segments)))
+                for b, s in enumerate(self.systems)
+            ]
+            for phase in range(2)
+        ]
+        self.phase = 0
+        self.launches = {}
+        self.count = math.prod(self.systems[0].region.shape)
+
+        with cupy.cuda.Device(self.device), self._stream():
+            for phase in (0, 1):
+                for forward in (True, False):
+                    template_source, _ = self._source(0, forward, phase)
+                    split_str = ') {\n' if ') {\n' in template_source else '){\n'
+                    signature, body = template_source.split(split_str, 1)
+                    parameters = [p.strip() for p in signature.split('(', 1)[1].rstrip(')').split(',') if p.strip()]
+                    declarations = []
+                    for j, param in enumerate(parameters):
+                        kind, name = param.rsplit(' ', 1)
+                        cast = kind.replace('__restrict__', '').strip()
+                        declarations.append(f'{param} = ({cast})pointers[blockIdx.y*{len(parameters)}+{j}];')
+                    source = (
+                        'extern "C" __global__ void batch_adjoint_update(const long long* pointers) {\n'
+                        + '\n'.join(declarations)
+                        + '\n'
+                        + body
+                    )
+
+                    table_rows = []
+                    owners = []
+                    for b in range(self.batch_size):
+                        _, tensors_b = self._source(b, forward, phase)
+                        table_rows.append([t.data_ptr() for t in tensors_b])
+                        owners.extend(tensors_b)
+
+                    table = torch.tensor(table_rows, device=self.systems[0].device, dtype=torch.int64)
+                    kernel, module = _compile(
+                        source,
+                        self.device,
+                        cupy.cuda.Device(self.device).compute_capability,
+                        'batch_adjoint_update',
+                    )
+                    self.launches[forward, phase] = (kernel, cupy.from_dlpack(table), module, table, owners)
+
+            self.observer = self._init_observer_kernel()
+
+    def _stream(self):
+        return self.cp.cuda.ExternalStream(
+            torch.cuda.current_stream(self.device).cuda_stream, device_id=self.device
+        )
+
+    def _source(self, b, forward, phase):
+        system = self.systems[b]
+        g = system.grid
+        shape = system.region.shape
+        strides = (shape[1] * shape[2], shape[2], 1)
+        real = 'double' if g.E.dtype == torch.float64 else 'float'
+        cn = f'(({real})({g.courant_number:.17g}))'
+        tensors = []
+        parameters = []
+
+        def argument(name, tensor, write=False):
+            if not tensor.is_contiguous():
+                raise ValueError('CUDA adjoint arrays must be contiguous.')
+            tensors.append(tensor)
+            parameters.append(f'{"" if write else "const "}{real}* __restrict__ {name}')
+            return name
+
+        argument('bar', self.h_bars[b] if forward else self.electric_seeds[b])
+        argument('target', self.e_bars[b] if forward else self.h_bars[b], True)
+        epsilon = self.epsilons[b]
+        argument('epsilon', epsilon)
+        if not forward and self.material_gradient:
+            argument('primal', g.H)
+            argument('gradient', self.gradients[b], True)
+
+        diagonal = epsilon.shape[-1] == 3
+
+        def eps(index, component):
+            return (
+                'epsilon[0]'
+                if epsilon.numel() == 1
+                else f'epsilon[{"3*("+index+")+"+str(component) if diagonal else index}]'
+            )
+
+        metrics = {}
+        segments = {}
+        for term, (axis, comp, _, _) in enumerate(CURL_TERMS):
+            if shape[axis] == 1:
+                continue
+            metric = g.metric.get((forward, axis))
+            if metric:
+                metrics[term] = (argument(f'metric{term}', metric[0]), metric[1])
+            segments[term] = []
+            for index in system.keys[forward, axis, comp]:
+                seg = system.segments[index]
+                values = {k: argument(f'{k}_{index}', seg[k]) for k in ('b', 'c', 'inv_k')}
+                values['old'] = argument(f'old_{index}', self.psi_bars[phase][b][index])
+                values['new'] = argument(f'new_{index}', self.psi_bars[1 - phase][b][index], True)
+                if not forward and self.material_gradient:
+                    values['primal'] = argument(f'primal_{index}', seg['psi'])
+                segments[term].append((seg, values))
+
+        lines = [
+            'const int i=blockIdx.x*blockDim.x+threadIdx.x;',
+            f'if(i>={self.count})return;',
+            f'const int x=i/{strides[0]};',
+            f'const int y=(i/{strides[1]})%{shape[1]};',
+            f'const int z=i%{shape[2]};',
+            f'{real} r0=0,r1=0,r2=0;',
+        ]
+
+        def memory_index(axis, coordinate, seg):
+            lo = seg['slice'][axis].start
+            hi = seg['slice'][axis].stop
+            coords = ['x', 'y', 'z']
+            coords[axis] = f'(({coordinate})-{lo})'
+            dims = list(shape)
+            dims[axis] = hi - lo
+            return f'({coords[0]}*{dims[1]}+{coords[1]})*{dims[2]}+{coords[2]}', f'({coordinate})-{lo}'
+
+        def edge(term, axis, out, sign, index, coordinate, write):
+            target = index if forward else f'({index})+{strides[axis]}'
+            scale = f'-{cn}' if forward else f'{cn}/{eps(target, out)}'
+            code = [f'{real} d=({"-" if sign<0 else ""}(({scale})*bar[3*({target})+{out}]));']
+            for seg, names in segments[term]:
+                lo = seg['slice'][axis].start
+                hi = seg['slice'][axis].stop
+                p, q = memory_index(axis, coordinate, seg)
+                code.extend([
+                    f'if(({coordinate})>={lo} && ({coordinate})<{hi}){{',
+                    f'const int p={p},q={q};',
+                    f'{real} b={names["old"]}[p]+d;',
+                    f'd=d*{names["inv_k"]}[q]+{names["c"]}[q]*b;',
+                ])
+                if write:
+                    code.append(f'{names["new"]}[p]={names["b"]}[q]*b;')
+                code.append('}')
+            if term in metrics:
+                code.append(f'd*={metrics[term][0]}[{coordinate}];')
+            return code
+
+        for term, (axis, comp, out, sign) in enumerate(CURL_TERMS):
+            n = shape[axis]
+            if n == 1:
+                continue
+            coord = 'xyz'[axis]
+            stride = strides[axis]
+            lines.append(f'if({coord}>0){{')
+            lines += edge(term, axis, out, sign, f'i-{stride}', f'{coord}-1', False)
+            lines.extend([f'r{comp}+=d;', '}', f'if({coord}<{n-1}){{'])
+            lines += edge(term, axis, out, sign, 'i', coord, True)
+            lines.extend([f'r{comp}-=d;', '}'])
+            if axis in g.wrap:
+                for coord_value, action in ((0, '+='), (n - 1, '-=')):
+                    target = f'i+{(n-1-coord_value)*stride}' if forward else f'i-{coord_value*stride}'
+                    scale = f'-{cn}' if forward else f'{cn}/{eps(target, out)}'
+                    value = f'({"-" if sign<0 else ""}(({scale})*bar[3*({target})+{out}]))'
+                    if term in metrics:
+                        value += f'*(({real})({metrics[term][1]:.17g}))'
+                    lines.append(f'if({coord}=={coord_value})r{comp}{action}{value};')
+            elif forward and axis in getattr(g, 'pec_upper', {}):
+                factor = g.pec_upper[axis]
+                value = f'({real})({sign*g.courant_number*factor:.17g})*bar[3*i+{out}]'
+                lines.append(f'if({coord}=={n-1})r{comp}+={value};')
+        for c in range(3):
+            lines.append(f'target[3*i+{c}]+=r{c};')
+
+        if not forward and self.material_gradient:
+            lines.append(f'{real} c0=0,c1=0,c2=0;')
+            for term, (axis, comp, out, sign) in enumerate(CURL_TERMS):
+                n = shape[axis]
+                if n == 1:
+                    continue
+                coord = 'xyz'[axis]
+                stride = strides[axis]
+                lines.extend([
+                    '{',
+                    f'{real} d=0;',
+                    f'if({coord}>0){{',
+                    f'd=primal[3*i+{comp}]-primal[3*(i-{stride})+{comp}];',
+                ])
+                if term in metrics:
+                    lines.append(f'd*={metrics[term][0]}[{coord}-1];')
+                for seg, names in segments[term]:
+                    lo = seg['slice'][axis].start
+                    hi = seg['slice'][axis].stop
+                    p, q = memory_index(axis, f'{coord}-1', seg)
+                    lines.extend([
+                        f'if({coord}-1>={lo} && {coord}-1<{hi}){{',
+                        f'const int p={p},q={q};',
+                        f'{real} memory={names["primal"]}[p]*{names["b"]}[q]+{names["c"]}[q]*d;',
+                        f'd=d*{names["inv_k"]}[q]+memory;',
+                        '}',
+                    ])
+                lines.append('}')
+                if axis in g.wrap:
+                    lines.extend([
+                        'else {',
+                        f'd=primal[3*i+{comp}]-primal[3*(i+{(n-1)*stride})+{comp}];',
+                    ])
+                    if term in metrics:
+                        lines.append(f'd*=(({real})({metrics[term][1]:.17g}));')
+                    lines.append('}')
+                lines.extend([f'c{out}+={"-" if sign<0 else ""}d;', '}'])
+            for c in range(3):
+                ep = eps('i', c)
+                lines.append(f'{real} g{c}=(-{cn}*bar[3*i+{c}])*c{c}/({ep}*{ep});')
+            if diagonal:
+                for c in range(3):
+                    lines.append(f'gradient[3*i+{c}]+=g{c};')
+            else:
+                lines.append('gradient[i]+=(g0+g1)+g2;')
+
+        source = (
+            'extern "C" __global__ void adjoint_update('
+            + ','.join(parameters)
+            + '){\n'
+            + '\n'.join(lines)
+            + '\n}'
+        )
+        return source, tensors
+
+    def _init_observer_kernel(self):
+        system = self.systems[0]
+        if not system.monitors:
+            return None
+        shape = system.region.shape
+        real = 'double' if system.grid.E.dtype == torch.float64 else 'float'
+
+        groups = {}
+        for m, (name, loc, component) in enumerate(system.monitors):
+            index = 3 * ((loc[0] * shape[1] + loc[1]) * shape[2] + loc[2]) + component
+            groups.setdefault((name[0], index), []).append(m)
+        count = len(groups)
+        layout = np.empty(3 * count + 1 + len(system.monitors), dtype=np.int64)
+        cursor = 0
+        for i, ((family, index), monitors) in enumerate(groups.items()):
+            layout[i] = cursor
+            layout[count + 1 + i] = index
+            layout[2 * count + 1 + i] = int(family == 'H')
+            layout[3 * count + 1 + cursor : 3 * count + 1 + cursor + len(monitors)] = monitors
+            cursor += len(monitors)
+        layout[count] = cursor
+        map_tensor = torch.from_numpy(layout).to(system.device)
+
+        code = '''extern "C" __global__ void batch_add_observations(
+            const long long* pointers, const long long* map,
+            int count, int monitors, int step) {
+            const int b = blockIdx.y;
+            const int i = blockIdx.x * blockDim.x + threadIdx.x;
+            if (i >= count) return;
+            const long long* inst_ptrs = pointers + 3 * b;
+            REAL* e = (REAL*)inst_ptrs[0];
+            REAL* h = (REAL*)inst_ptrs[1];
+            const REAL* v = (const REAL*)inst_ptrs[2];
+            const long long begin = map[i], end = map[i+1];
+            const long long target = map[count + 1LL + i];
+            REAL* field = map[2LL * count + 1 + i] ? h : e;
+            REAL value = field[target];
+            for (long long j = begin; j < end; ++j) {
+                value += v[(long long)step * monitors + map[3LL * count + 1 + j]];
+            }
+            field[target] = value;
+        }'''.replace('REAL', real)
+
+        fn, module = _compile(
+            code,
+            self.device,
+            self.cp.cuda.Device(self.device).compute_capability,
+            'batch_add_observations',
+        )
+
+        obs_table_rows = [
+            [self.e_bars[b].data_ptr(), self.h_bars[b].data_ptr(), self.signal_bars[b].data_ptr()]
+            for b in range(self.batch_size)
+        ]
+        obs_table = torch.tensor(obs_table_rows, device=system.device, dtype=torch.int64)
+        self.obs_owners = (obs_table, map_tensor, *self.signal_bars)
+
+        return (
+            fn,
+            self.cp.from_dlpack(obs_table),
+            self.cp.from_dlpack(map_tensor),
+            count,
+            len(system.monitors),
+            obs_table,
+        )
+
+    def step(self, index, *, observation_index=None):
+        idx = index if observation_index is None else observation_index
+        with self.cp.cuda.Device(self.device), self._stream():
+            if self.observer is not None:
+                fn, obs_table_view, map_view, count, monitors, _ = self.observer
+                grid_x = (count + 127) // 128
+                fn(
+                    (grid_x, self.batch_size),
+                    (128, 1, 1),
+                    (obs_table_view, map_view, np.int32(count), np.int32(monitors), np.int32(idx)),
+                )
+            for forward in (True, False):
+                fn, table_view, _, _, _ = self.launches[forward, self.phase]
+                grid_x = (self.count + 255) // 256
+                fn((grid_x, self.batch_size), (256, 1, 1), (table_view,))
+        self.phase = 1 - self.phase
+
+
+class TensorPermittivityBatchAdapter(torch.nn.Module):
+    """Shared-topology batch adapter for multi-permittivity CUDA FDTD simulation.
+
+    Executes a cohort of B permittivity tensors eps_batch on a shared base Project
+    in a single fused CUDA launch with CUDA graph acceleration.
+    """
+
+    def __init__(
+        self,
+        base_project,
+        eps_batch=None,
+        *,
+        device: int | torch.device = 0,
+        options=None,
+        cuda_graph: bool = True,
+        cuda_graph_steps: int = 16,
+        memory_fraction: float = 0.6,
+    ):
+        super().__init__()
+        from .models import Project
+        self.base_project = Project.model_validate(base_project.model_dump())
+        self.options = options
+        self.cuda_device = torch.device(f"cuda:{device}" if isinstance(device, int) else device)
+        self.cuda_graph = cuda_graph
+        self.cuda_graph_steps = cuda_graph_steps
+        self.memory_fraction = memory_fraction
+        self._eps_batch = self._normalize_eps_batch(eps_batch) if eps_batch is not None else None
+
+    def _normalize_eps_batch(self, eps_batch):
+        if isinstance(eps_batch, torch.Tensor):
+            if eps_batch.ndim == 4:
+                return tuple(eps_batch[b] for b in range(eps_batch.shape[0]))
+            elif eps_batch.ndim == 5:
+                return tuple(eps_batch[b] for b in range(eps_batch.shape[0]))
+            else:
+                raise ValueError(f"eps_batch tensor must have 4 or 5 dims, got shape {eps_batch.shape}")
+        elif isinstance(eps_batch, (list, tuple)):
+            return tuple(eps_batch)
+        else:
+            raise TypeError("eps_batch must be a tuple, list, or Tensor.")
+
+    def forward(self, *eps_cohort_args):
+        from .differentiable import _BatchFDTD, AdjointOptions
+        if len(eps_cohort_args) == 1 and isinstance(eps_cohort_args[0], (tuple, list)):
+            cohort = tuple(eps_cohort_args[0])
+        elif len(eps_cohort_args) == 1 and isinstance(eps_cohort_args[0], torch.Tensor) and eps_cohort_args[0].ndim in (4, 5):
+            cohort = self._normalize_eps_batch(eps_cohort_args[0])
+        elif len(eps_cohort_args) == 0 and self._eps_batch is not None:
+            cohort = self._eps_batch
+        else:
+            cohort = eps_cohort_args
+
+        options = self.options or AdjointOptions()
+        return _BatchFDTD.apply(self, options, {}, None, *cohort)
+
+    def run(
+        self,
+        eps_batch=None,
+        *,
+        objective=None,
+        progress=None,
+        cancel=None,
+    ):
+        from .differentiable import _System
+        from .field_monitors import FrequencyPlane, FrequencyUpdates
+        from .cuda_graph import CudaStepGraphs, observation_schedule, validate_graph_steps
+        from .batch import BatchItem, BatchReport
+        from .solver import Result
+        from .cuda_memory import cuda_mem_info
+        import time
+
+        cohort = self._normalize_eps_batch(eps_batch) if eps_batch is not None else self._eps_batch
+        if cohort is None or len(cohort) == 0:
+            raise ValueError("No permittivity cohort supplied to run().")
+
+        B = len(cohort)
+        if not (1 <= B <= 64):
+            raise ValueError(f"Batch size must be between 1 and 64, got {B}")
+
+        first_eps = cohort[0]
+        if not first_eps.is_cuda:
+            raise ValueError("TensorPermittivityBatchAdapter requires CUDA tensors.")
+
+        device = first_eps.device
+        dtype = first_eps.dtype
+        r = self.base_project.region
+        expected_shape = r.shape
+
+        for b, eps in enumerate(cohort):
+            if not eps.is_cuda or eps.device != device:
+                raise ValueError(f"cohort[{b}] device {eps.device} != {device}")
+            if eps.dtype != dtype:
+                raise ValueError(f"cohort[{b}] dtype {eps.dtype} != {dtype}")
+            if eps.shape[:3] != expected_shape:
+                raise ValueError(f"cohort[{b}] spatial shape {eps.shape[:3]} != region {expected_shape}")
+            if not bool(torch.isfinite(eps).all()) or bool((eps < 1.0).any()):
+                raise ValueError(f"cohort[{b}] must be finite and >= 1.0")
+
+        free_bytes, _ = cuda_mem_info()
+        bytes_per_grid = 6 * math.prod(r.shape) * (8 if dtype == torch.float64 else 4) * 2
+        if B * bytes_per_grid > free_bytes * self.memory_fraction:
+            raise ValueError(
+                f"Tensor cohort memory {B * bytes_per_grid} exceeds allowance {free_bytes * self.memory_fraction}"
+            )
+
+        started = time.perf_counter()
+        wall_started = time.time()
+
+        systems = [_System(self.base_project, eps) for eps in cohort]
+        grids = [s.grid for s in systems]
+        for g in grids:
+            g.region = r
+            g.memory_states = []
+
+        steps = r.steps
+        point_monitors = [m for m in self.base_project.monitors if m.enabled and m.kind == 'point']
+        field_monitors = [m for m in self.base_project.monitors if m.enabled and m.kind == 'field']
+
+        traces = [torch.zeros((steps, len(point_monitors)), device=device, dtype=dtype) for _ in range(B)]
+        counter = torch.zeros(1, device=device, dtype=torch.int64)
+
+        planes = [
+            [FrequencyPlane(g, self.base_project.resolved_monitor(m)) for m in field_monitors]
+            for g in grids
+        ]
+        frequency_updates = FrequencyUpdates(m for group in planes for m in group)
+
+        update = FusedBatchYeeCUDA(grids)
+        io = FusedBatchIO(grids, [self.base_project] * B, traces, counter)
+
+        def step():
+            update.update_E()
+            io.inject('E')
+            update.update_H()
+            io.inject('H')
+            frequency_updates.update(counter)
+            io.record()
+
+        states = [counter, *traces]
+        for g in grids:
+            states.extend((g.E, g.H, *g.memory_states, *g.faces['E'], *g.faces['H']))
+
+        graph = None
+        width = min(validate_graph_steps(self.cuda_graph_steps), steps) if self.cuda_graph else 1
+        if self.cuda_graph:
+            graph = CudaStepGraphs(step, states, steps, width)
+            torch.cuda.synchronize(device)
+            for completed, advance in observation_schedule(steps, width):
+                graph.replay(advance)
+        else:
+            torch.cuda.synchronize(device)
+            for _ in range(steps):
+                step()
+
+        torch.cuda.synchronize(device)
+        elapsed = time.perf_counter() - started
+
+        items = []
+        for b in range(B):
+            freq_fields = [p.result() for p in planes[b]]
+            tr = traces[b][:steps].cpu().numpy().copy()
+            times = np.arange(1, steps + 1) * r.time_step
+            e_arr = grids[b].E.detach().cpu().numpy()
+            h_arr = grids[b].H.detach().cpu().numpy()
+            summary = {
+                'execution': 'fused_cuda_batch',
+                'steps': steps,
+                'batch_index': b,
+                'device': str(device),
+                'seconds': elapsed,
+            }
+            res = Result(
+                self.base_project,
+                summary,
+                np.empty((0,)),
+                np.empty((0,)),
+                cohort[b].detach().cpu().numpy(),
+                tr,
+                times,
+                e_arr,
+                h_arr,
+                freq_fields,
+            )
+            item = BatchItem(
+                id=f'case-{b:04d}',
+                status='completed',
+                parameters={'batch_index': b},
+                summary=summary,
+                result=res,
+                device=str(device),
+                started=wall_started,
+                finished=time.time(),
+            )
+            if objective is not None:
+                try:
+                    val = objective(res)
+                    item.metrics = val if isinstance(val, dict) else {'objective': float(val)}
+                except Exception as exc:
+                    item.status = 'failed'
+                    item.error = str(exc)
+            items.append(item)
+
+        report = BatchReport(
+            items=items,
+            seconds=elapsed,
+            plan={'batch_size': B, 'cuda_graph': self.cuda_graph, 'width': width},
+        )
+        report.results = [item.result for item in items]
+        report.signals = [item.result.signals for item in items]
+        report.fluxes = [
+            [fm['flux'] for fm in item.result.frequency_fields if 'flux' in fm]
+            for item in items
+        ]
+        return report
+

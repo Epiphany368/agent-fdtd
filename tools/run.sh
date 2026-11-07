@@ -13,8 +13,10 @@ if [ "$#" -lt 2 ]; then echo 'usage: run.sh <config> <python-script> [args...]' 
 if [ -z "${PY:-}" ]; then
     if [ -x "$PWD/.venv/bin/python" ]; then
         PY="$PWD/.venv/bin/python"
+    elif [ -x "$PWD/.venv/Scripts/python.exe" ]; then
+        PY="$PWD/.venv/Scripts/python.exe"
     else
-        PY=$(command -v python3 || echo "$PWD/.venv/bin/python")
+        PY=$(command -v python3 || command -v python || echo "$PWD/.venv/bin/python")
     fi
 fi
 [ -x "$PY" ] || { echo "Python unavailable: $PY" >&2; exit 69; }

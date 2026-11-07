@@ -18,9 +18,9 @@ from units_ledger import evaluate_ledger
 
 def render_report(run):
     run = Path(run)
-    readout = json.loads((run / 'readout.json').read_text())
+    readout = json.loads((run / 'readout.json').read_text(encoding='utf-8'))
     config_path = run / 'config.input.json'
-    config = json.loads(config_path.read_text()) if config_path.is_file() else None
+    config = json.loads(config_path.read_text(encoding='utf-8')) if config_path.is_file() else None
     headlines = verify_invariants(readout, config)
     headlines = label_analytic_cases(readout, config, headlines)
     checks = evaluate_invariants(readout, config)

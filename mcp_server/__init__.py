@@ -8,4 +8,4 @@ Importing this package must not import the solver.  ``torchfdtd`` is loaded by
 ``tools/run.sh`` in its own process, only after a run is requested.
 """
 
-__version__ = "1.0.1"
+__version__ = "2.0.0"

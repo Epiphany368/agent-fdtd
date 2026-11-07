@@ -9,7 +9,7 @@ This module does not promise derivatives for unsupported scene features.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from functools import cached_property
+from functools import cached_property, lru_cache
 import math
 import os
 from pathlib import Path
@@ -782,6 +782,7 @@ class _FDTD(torch.autograd.Function):
             if getattr(options, 'stop_at_step', None) is not None and step >= options.stop_at_step:
                 break
             system.advance(step, step + 1)
+            completed_step = step + 1
             if spectral is None:
                 system.observe(out=signals[step])
             else:
@@ -789,7 +790,6 @@ class _FDTD(torch.autograd.Function):
                 system.observe(out=sample_views[local])
                 if local + 1 == spectral.block_size or step + 1 == system.region.steps:
                     spectral.accumulate(signals, samples[:local + 1], step - local)
-                    completed_step = step + 1
                     completed_block = completed_step // spectral.block_size
                     if journal is not None and journal.should_commit(completed_block, time.time()):
                         journal.save_checkpoint(completed_step, completed_block, system.state(), signals, peak_energy)
@@ -1094,3 +1094,341 @@ def smooth_sphere_epsilon(region,radius,*,center=None,inside=4.,outside=1.,width
         return torch.stack([padded(at(field_axes(region,c))) for c in ('Ex','Ey','Ez')],dim=-1)
     return at([np.r_[(a[:-1]+a[1:])/2,a[-1:]] if t>len(a)-1 else (a[:-1]+a[1:])/2 if len(a)>2 else np.array([0.])
                for a,t in zip(region.mesh_nodes,target)])
+
+
+class _BatchSystem:
+    """Cohort of _System instances evaluated concurrently via FusedBatchYeeCUDA."""
+
+    def __init__(
+        self,
+        systems: list[_System],
+        base_project: Project,
+        traces: list[torch.Tensor],
+        counter: torch.Tensor,
+    ):
+        from .cuda_batch import FusedBatchYeeCUDA, FusedBatchIO
+
+        self.systems = list(systems)
+        self.base_project = base_project
+        self.region = systems[0].region
+        self.device = systems[0].device
+        self.dtype = systems[0].dtype
+        self.current_step = 0
+        self.batch_size = len(systems)
+        self.traces = traces
+        self.counter = counter
+        self.batch_kernel = FusedBatchYeeCUDA([s.grid for s in self.systems])
+        self.batch_io = FusedBatchIO(
+            [s.grid for s in self.systems],
+            [base_project] * self.batch_size,
+            traces,
+            counter,
+        )
+
+    def state(self):
+        states = []
+        for s in self.systems:
+            states.extend(s.state())
+        return tuple(states)
+
+    def zero(self):
+        for value in self.state():
+            value.zero_()
+        self.counter.zero_()
+        self.current_step = 0
+
+    def advance(self, start: int, end: int):
+        self.counter[0] = start
+        for step in range(start, end):
+            self.batch_kernel.update_E()
+            self.batch_io.inject('E')
+            self.batch_kernel.update_H()
+            self.batch_io.inject('H')
+            self.batch_io.record()
+        self.current_step = end
+
+
+class _BatchFDTD(torch.autograd.Function):
+    """Autograd function coordinating batched forward simulation and curl-transpose backward."""
+
+    @staticmethod
+    def forward(ctx, adapter, options, report, spectral, *eps_batch):
+        ctx.save_for_backward(*eps_batch)
+        ctx.adapter = adapter
+        ctx.options = options
+        ctx.report = report
+        ctx.spectral = spectral
+
+        B = len(eps_batch)
+        base_project = adapter.base_project
+        device = eps_batch[0].device
+        dtype = eps_batch[0].dtype
+
+        systems = [_System(base_project, eps) for eps in eps_batch]
+        num_monitors = len(systems[0].monitors)
+        steps = base_project.region.steps
+
+        traces = [
+            torch.zeros((steps, num_monitors), device=device, dtype=dtype)
+            for _ in range(B)
+        ]
+        counter = torch.zeros(1, device=device, dtype=torch.int64)
+
+        batch_system = _BatchSystem(systems, base_project, traces, counter)
+        ctx.batch_system = batch_system
+
+        batch_system.advance(0, steps)
+
+        signals_batch = tuple(traces[b].clone() for b in range(B))
+        return signals_batch
+
+    @staticmethod
+    def backward(ctx, *signal_bars):
+        if torch.is_grad_enabled():
+            raise RuntimeError('Higher-order derivatives are not supported.')
+        eps_batch = ctx.saved_tensors
+        B = len(eps_batch)
+        adapter, options, report = ctx.adapter, ctx.options, ctx.report
+        batch_system = ctx.batch_system
+        systems = batch_system.systems
+
+        started = time.perf_counter()
+        gradients = [
+            torch.zeros(eps.shape, device=eps.device, dtype=eps.dtype)
+            for eps in eps_batch
+        ]
+
+        from .cuda_batch import FusedBatchTransposeYeeCUDA
+
+        fused = FusedBatchTransposeYeeCUDA(systems, gradients, signal_bars)
+        checkpoints = _Checkpoints(batch_system, options, report)
+
+        def replay(key, start, end):
+            checkpoints.restore(key)
+            batch_system.advance(start, end)
+            report['replayed_steps'] = report.get('replayed_steps', 0) + (end - start)
+
+        def reverse(start, end, key, slots):
+            while end > start:
+                if end - start == 1 or slots == 0:
+                    for step in range(end - 1, start - 1, -1):
+                        replay(key, start, step)
+                        if step > start:
+                            checkpoints.prefetch(key)
+                        fused.step(step)
+                    return
+                middle = start + _split(end - start, slots)
+                replay(key, start, middle)
+                saved = checkpoints.save()
+                try:
+                    reverse(middle, end, saved, slots - 1)
+                finally:
+                    checkpoints.drop(saved)
+                end = middle
+
+        try:
+            actual_steps = getattr(ctx, 'actual_steps', batch_system.region.steps)
+            reverse(0, actual_steps, None, options.checkpoints)
+            if eps_batch[0].is_cuda:
+                torch.cuda.synchronize(eps_batch[0].device)
+            report['backward_seconds'] = time.perf_counter() - started
+        finally:
+            reverse = None
+            checkpoints.close()
+
+        return (None, None, None, None, *gradients)
+
+
+@lru_cache(maxsize=8192)
+def count_recompute_steps(length: int, slots: int) -> int:
+    """Exact binomial recompute forward steps under treeverse scheduling."""
+    if length <= 1:
+        return 0
+    if slots == 0:
+        return length * (length - 1) // 2
+    middle = _split(length, slots)
+    return (
+        middle
+        + count_recompute_steps(length - middle, slots - 1)
+        + count_recompute_steps(middle, slots)
+    )
+
+
+def count_tier_transfers(length: int, slots: int, host_slots: int) -> int:
+    """Counts host checkpoint save/restore I/O transfers during binomial traversal."""
+    if slots == 0 or host_slots == 0 or length <= 1:
+        return 0
+    transfers = 0
+
+    def _traverse(l, s, active_depth):
+        nonlocal transfers
+        if l <= 1 or s == 0:
+            return
+        middle = _split(l, s)
+        if active_depth < host_slots:
+            transfers += 2  # 1 save (D2H) + 1 restore (H2D)
+        _traverse(l - middle, s - 1, active_depth + 1)
+        _traverse(middle, s, active_depth)
+
+    _traverse(length, slots, 0)
+    return transfers
+
+
+def select_optimal_adjoint_options(
+    project: Project,
+    *,
+    gpu_budget_bytes: int,
+    host_budget_bytes: int | None = None,
+    candidate_checkpoints: tuple[int, ...] = (2, 4, 8, 12, 16, 24, 32),
+    backward_kernel: str = 'fused',
+    empirical_profile: dict[str, Any] | None = None,
+) -> tuple[AdjointOptions, dict[str, Any]]:
+    """Selects checkpoint configuration minimizing end-to-end wall time subject to VRAM budget.
+
+    Guarantees non-inferiority to fixed default (c=4, device) whenever default is feasible.
+    """
+    from .adjoint_memory import _resident_reservation
+    from .memory_profile import host_memory
+    from .boundaries import BoundaryDescription
+
+    if host_budget_bytes is None:
+        avail = host_memory()["available_bytes"]
+        host_budget_bytes = int(avail * 0.8) if avail else 32 * 1024**3
+
+    steps = project.region.steps
+    shape = project.region.shape
+    real_item = 8 if project.region.precision == "float64" else 4
+    item = real_item * (2 if project.region.complex_fields else 1)
+    n = math.prod(shape)
+
+    boundary = BoundaryDescription(project.region)
+    segments = [s for group in boundary.cpml.values() for s in group]
+    cpml = sum(math.prod(s['shape']) for s in segments)
+    faces = sum(
+        math.prod(fshape)
+        for blocks in boundary.pmc_blocks.values()
+        for _, _, fshape in blocks
+    )
+    state_bytes = (6 * n + cpml + faces) * item
+
+    prof = empirical_profile or {}
+    t_fwd_step = float(prof.get("t_fwd_step", 0.000144))
+    t_adj_step = float(prof.get("t_adj_step", 0.000180))
+    pcie_bw_gbps = float(prof.get("pcie_bw_gbps", 22.0))
+    pcie_bw_bps = pcie_bw_gbps * 1e9
+
+    feasible_candidates = []
+
+    for c in candidate_checkpoints:
+        if c > steps:
+            continue
+
+        partitions = [
+            ("device", c, 0),
+        ]
+        for c_dev in sorted({max(1, c // 4), max(1, c // 2), max(1, 3 * c // 4)}):
+            if 0 < c_dev < c:
+                partitions.append(("hierarchical", c_dev, c - c_dev))
+        partitions.append(("host", 0, c))
+
+        for storage, dev_cp, host_cp in partitions:
+            opt = AdjointOptions(
+                checkpoints=c,
+                storage=storage,
+                device_checkpoints=dev_cp,
+                host_checkpoints=host_cp,
+                gpu_budget_bytes=gpu_budget_bytes,
+                host_budget_bytes=host_budget_bytes,
+                backward_kernel=backward_kernel,
+            )
+            try:
+                mem_report = _resident_reservation(
+                    project, opt, device="cuda:0", forward_admission=False
+                )
+                gpu_req = mem_report["gpu_reservation_bytes"]
+                host_req = mem_report["host_reservation_bytes"]
+            except ValueError:
+                continue
+
+            if gpu_req > gpu_budget_bytes or host_req > host_budget_bytes:
+                continue
+
+            recomp_steps = count_recompute_steps(steps, c)
+            host_transfers = (
+                count_tier_transfers(steps, c, host_cp) if host_cp > 0 else 0
+            )
+            transfer_sec = (host_transfers * state_bytes) / pcie_bw_bps
+
+            t_pred = (
+                steps * t_fwd_step
+                + steps * t_adj_step
+                + recomp_steps * t_fwd_step
+                + transfer_sec
+            )
+
+            feasible_candidates.append({
+                "options": opt,
+                "checkpoints": c,
+                "storage": storage,
+                "device_checkpoints": dev_cp,
+                "host_checkpoints": host_cp,
+                "gpu_required_bytes": gpu_req,
+                "host_required_bytes": host_req,
+                "recompute_steps": recomp_steps,
+                "predicted_wall_time_sec": t_pred,
+            })
+
+    if not feasible_candidates:
+        raise ValueError(
+            f"No feasible checkpoint configuration fits within gpu_budget_bytes={gpu_budget_bytes}."
+        )
+
+    feasible_candidates.sort(key=lambda x: x["predicted_wall_time_sec"])
+    optimal = feasible_candidates[0]
+
+    default_opt = AdjointOptions(
+        checkpoints=4,
+        storage="device",
+        device_checkpoints=4,
+        host_checkpoints=0,
+        gpu_budget_bytes=gpu_budget_bytes,
+        host_budget_bytes=host_budget_bytes,
+        backward_kernel=backward_kernel,
+    )
+    default_latency = None
+    try:
+        def_mem = _resident_reservation(
+            project, default_opt, device="cuda:0", forward_admission=False
+        )
+        if def_mem["gpu_reservation_bytes"] <= gpu_budget_bytes:
+            def_recomp = count_recompute_steps(steps, 4)
+            default_latency = (
+                steps * t_fwd_step + steps * t_adj_step + def_recomp * t_fwd_step
+            )
+    except ValueError:
+        pass
+
+    report = {
+        "selected": {
+            "checkpoints": optimal["checkpoints"],
+            "storage": optimal["storage"],
+            "device_checkpoints": optimal["device_checkpoints"],
+            "host_checkpoints": optimal["host_checkpoints"],
+            "gpu_required_bytes": optimal["gpu_required_bytes"],
+            "recompute_steps": optimal["recompute_steps"],
+            "predicted_wall_time_sec": optimal["predicted_wall_time_sec"],
+        },
+        "default_latency_sec": default_latency,
+        "non_inferior": (default_latency is None)
+        or (optimal["predicted_wall_time_sec"] <= default_latency + 1e-9),
+        "speedup_vs_default": (
+            (default_latency / optimal["predicted_wall_time_sec"])
+            if default_latency
+            else "default_infeasible"
+        ),
+        "total_evaluated_candidates": len(feasible_candidates),
+        "candidates": feasible_candidates,
+    }
+
+    return optimal["options"], report
+

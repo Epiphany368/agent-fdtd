@@ -22,26 +22,30 @@ CONFIG_PATH = Path(os.environ['PARITY_CONFIG'])
 
 
 def git(args, cwd):
-    result = subprocess.run(['git', '-C', str(cwd), *args], text=True, capture_output=True)
+    result = subprocess.run(['git', '-C', str(cwd), *args], text=True, encoding='utf-8', errors='replace', capture_output=True)
     return result.stdout.strip() if result.returncode == 0 else None
 
 
 def main():
-    config = json.loads(CONFIG_PATH.read_text())
-    pin = json.loads((PROJECT / 'configs/baseline-pin.json').read_text())
+    config = json.loads(CONFIG_PATH.read_text(encoding='utf-8'))
+    pin = json.loads((PROJECT / 'configs/baseline-pin.json').read_text(encoding='utf-8'))
     fork = PROJECT / pin['solver_root']
     upstream = PROJECT / pin['upstream']['solver_root']
     snapshot = Path(os.environ['PARITY_SNAPSHOT'])
 
     upstream_present = upstream.exists()
-    is_public_export = (PROJECT / 'docs/leg-criteria.json').is_file() and not (PROJECT / 'plan.md').is_file()
+    has_criteria_index = (PROJECT / 'configs/leg-criteria.json').is_file() or (PROJECT / 'docs/leg-criteria.json').is_file()
+    is_public_export = has_criteria_index and not (PROJECT / 'plan.md').is_file()
 
     checks = {
         'run_dir_exists': RUN_DIR.is_dir(),
         'snapshot_exists': snapshot.is_dir(),
         'snapshot_has_src': (snapshot / 'src').is_dir(),
         'snapshot_has_project_docs': (
-            (snapshot / 'README.md').is_file() and (snapshot / 'docs/leg-criteria.json').is_file()
+            (snapshot / 'README.md').is_file() and (
+                (snapshot / 'configs/leg-criteria.json').is_file()
+                or (snapshot / 'docs/leg-criteria.json').is_file()
+            )
             if is_public_export
             else all((snapshot / name).is_file() for name in ('plan.md', 'README.md', 'AGENTS.md'))
         ),
@@ -72,7 +76,8 @@ def main():
         'checks': checks,
     }
     Path(os.environ['EFFECTIVE_JSON']).write_text(
-        json.dumps(effective, indent=2, ensure_ascii=False, allow_nan=False) + '\n')
+        json.dumps(effective, indent=2, ensure_ascii=False, allow_nan=False) + '\n',
+        encoding='utf-8')
 
     for name, ok in checks.items():
         print(f'{"PASS" if ok else "FAIL"} {name}')
