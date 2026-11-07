@@ -5,7 +5,9 @@
 # Versions are the ones this release was verified against (2026-10-21). Lower bounds are
 # deliberately loose; the upper bound on torch is absent because no incompatibility is known,
 # which is a statement about evidence, not a promise.
-torch>=2.6
+torch>=2.5
 numpy>=2.0
 scipy>=1.14
 matplotlib>=3.8
+fdtd==0.2.2
+mcp>=1.0,<2

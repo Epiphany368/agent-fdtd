@@ -11,6 +11,7 @@ requires-python = ">=3.10"
 license = { text = "MIT" }
 dependencies = [
     "mcp>=1.0,<2",
+    "fdtd==0.2.2",
 ]
 
 [project.optional-dependencies]

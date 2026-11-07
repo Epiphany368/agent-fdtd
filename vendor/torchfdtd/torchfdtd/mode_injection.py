@@ -3,6 +3,7 @@
 Uniform 3D meshes, periodic transverse axes, longitudinal CPML, real isotropic
 fixed launch materials only. Eigensystem and source profiles are fixed inputs.
 """
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 import hashlib
 import json
@@ -10,7 +11,7 @@ import math
 import os
 import numpy as np
 import torch
-from .mode_ports import solve_waveguide_modes, _amplitudes, _uniform_cell_quadrature, C0
+from .mode_ports import solve_waveguide_modes, _amplitudes, _uniform_cell_quadrature, _sample_permittivity_component, C0
 from .adjoint_planes import DifferentiablePlaneSimulation
 from .differentiable import DifferentiableSimulation, _System
 from .injection import oneway_plan
@@ -49,6 +50,10 @@ class ModalLaunch:
         for axis in ((w+1)%3,(w+2)%3):fields[...,3+axis]*=factor
         fields.setflags(write=False)
         return replace(self.mode,fields=fields)
+
+    @property
+    def beta_yee_spacetime_per_um(self):
+        return float(np.real(self.mode.beta_per_um))
 
     @property
     def storage_bytes(self):
@@ -161,8 +166,7 @@ def prepare_modal_launch(project, permittivity, *, mode_index=0, num_modes=2, so
     for c in range(3):
         axes=mode.component_axes('E'+'xyz'[c])
         coords=np.meshgrid(*axes,indexing='ij')
-        values=permittivity(*coords) if callable(permittivity) else permittivity
-        epsilon[...,c]=np.broadcast_to(values,shape)
+        epsilon[...,c]=_sample_permittivity_component(permittivity,coords,c,shape,dtype)
     if np.min(epsilon)<1:raise ValueError('Native FDTD CFL requires epsilon at least one.')
     amplitude_scale=float(np.max(np.abs(mode.fields[...,:3])))
     incident=mode if d==1 else mode.backward()
@@ -279,7 +283,7 @@ class _ModalSimulation(DifferentiableSimulation):
         extra=2*launch.storage_bytes+(epsilon.numel()*epsilon.element_size() if epsilon.requires_grad else 0)
         # Use explicit budget fields below rather than depending on report labels.
         from .cuda_memory import cuda_budget_limit
-        device_required=base['gpu_reservation_bytes']
+        device_required=base.get('own_required_bytes',base['gpu_reservation_bytes'])
         host_required=base.get('host_reservation_bytes',0)+extra
         # The modal API treats an explicit host budget as the full admitted
         # host footprint, including its packet and gradient-freezing carrier.
@@ -406,32 +410,56 @@ class ModeInjectedPlaneSimulation(DifferentiablePlaneSimulation):
         return self._planes(epsilon,frequency_hz,block_size,run)
 
 
-def modal_plane_amplitudes(plane,launch):
+def modal_plane_amplitudes(plane,launch,*,check_frequency=True):
     """Signed-axis forward/backward complex amplitudes in the fixed mode basis.
 
     Amplitudes include the native time-integral DFT factor (seconds). They are
     referenced to the underlying unit reduced-power mode, not a peak-E basis.
+    Supports single-frequency planes, broadband multi-frequency planes against
+    a carrier `ModalLaunch`, or a `Sequence[ModalLaunch]` matching `plane.frequency_hz`.
     """
+    if isinstance(launch, Sequence) and not isinstance(launch, ModalLaunch):
+        launches = tuple(launch)
+        if len(launches) != plane.frequency_hz.numel():
+            raise ValueError('A sequence of modal launches must match the number of plane frequencies.')
+        fields_flat = plane.fields.reshape(plane.frequency_hz.numel(), -1, 6) if plane.fields.ndim > 3 else plane.fields
+        forwards, backwards = [], []
+        for idx, item in enumerate(launches):
+            single_plane = replace(plane, fields=fields_flat[idx:idx+1], frequency_hz=plane.frequency_hz[idx:idx+1])
+            res = modal_plane_amplitudes(single_plane, item, check_frequency=check_frequency)
+            forwards.append(res['forward'][0])
+            backwards.append(res['backward'][0])
+        return dict(forward=torch.stack(forwards, dim=0), backward=torch.stack(backwards, dim=0))
+
     if plane.normal!=launch.mode.normal:raise ValueError('Modal plane normal mismatch.')
     normal='xyz'.index(plane.normal)
     geometry = getattr(plane, 'points_um_geometry', None)
     coordinate = geometry[0, normal] if geometry is not None else plane.points_um[0, normal]
     mode=launch.detector_mode(float(coordinate))
-    if plane.frequency_hz.numel()!=1 or not torch.isclose(plane.frequency_hz[0],plane.frequency_hz.new_tensor(C0/(mode.wavelength_um*1e-6)),rtol=1e-6):
-        raise ValueError('Modal amplitudes require the solved carrier frequency.')
+    target_freq = plane.frequency_hz.new_tensor(C0/(mode.wavelength_um*1e-6))
+    if check_frequency:
+        if plane.frequency_hz.numel() == 1:
+            if not torch.isclose(plane.frequency_hz[0], target_freq, rtol=1e-6):
+                raise ValueError('Modal amplitudes require the solved carrier frequency.')
+        else:
+            f_min = plane.frequency_hz.min() * (1.0 - 1e-3)
+            f_max = plane.frequency_hz.max() * (1.0 + 1e-3)
+            if not bool((target_freq >= f_min) & (target_freq <= f_max)):
+                raise ValueError('Modal amplitudes require the solved carrier frequency.')
     _uniform_cell_quadrature(plane,mode)
     basis=torch.tensor(mode.sample_plane(plane.points_um.detach().cpu().numpy()),device=plane.fields.device,dtype=plane.fields.dtype)
     basis_scale=basis.abs().max()
     basis=basis/basis_scale
-    scale=plane.fields.detach().abs().max()
+    fields_flat = plane.fields.reshape(plane.frequency_hz.numel(), -1, 6) if plane.fields.ndim > 3 else plane.fields
+    scale=fields_flat.detach().abs().max()
     if not bool(torch.isfinite(scale)):raise ValueError('Modal fields must be finite.')
     if not bool(scale>0):scale=scale.new_ones(())
     weights=plane.weights/plane.weights.detach().abs().max()
-    forward,backward=_amplitudes(plane.fields/scale,basis,weights,normal)
+    forward,backward=_amplitudes(fields_flat/scale,basis,weights,normal)
     return dict(forward=forward*scale/basis_scale,backward=backward*scale/basis_scale)
 
 
-def modal_s_parameters(plane,reference,launch,*,subtract_reference_backward=True):
+def modal_s_parameters(plane,reference,launch,*,subtract_reference_backward=True,check_frequency=True):
     """Complex t and r, referenced to propagation in the launch direction.
 
     t uses the matched reference at the same plane, so an unchanged guide has
@@ -447,9 +475,10 @@ def modal_s_parameters(plane,reference,launch,*,subtract_reference_backward=True
     # Common detached spectral-field scaling keeps division seeds in FP32 range.
     scale=reference.fields.detach().abs().max()
     if not bool(torch.isfinite(scale)) or not bool(scale>0):raise ValueError('Modal reference is zero or nonfinite.')
-    sample=modal_plane_amplitudes(replace(plane,fields=plane.fields/scale),launch)
-    incident=modal_plane_amplitudes(replace(reference,fields=reference.fields/scale),launch)
-    f,b=('forward','backward') if launch.direction==1 else ('backward','forward')
+    sample=modal_plane_amplitudes(replace(plane,fields=plane.fields/scale),launch,check_frequency=check_frequency)
+    incident=modal_plane_amplitudes(replace(reference,fields=reference.fields/scale),launch,check_frequency=check_frequency)
+    direction = launch[0].direction if isinstance(launch, Sequence) and not isinstance(launch, ModalLaunch) else launch.direction
+    f,b=('forward','backward') if direction==1 else ('backward','forward')
     normalization=incident[f]
     # Threshold relative to modal reference support, independent of SI units.
     support=incident[f].abs()+incident[b].abs()

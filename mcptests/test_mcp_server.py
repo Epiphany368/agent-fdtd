@@ -81,7 +81,7 @@ class ToolSurfaceTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(ledger["count"], 3)
             last_lines = [
                 json.loads(line)
-                for line in (ROOT / "runs/ledger.jsonl").read_text().splitlines()[-3:]
+                for line in (ROOT / "runs/ledger.jsonl").read_text(encoding="utf-8").splitlines()[-3:]
             ]
             self.assertEqual(ledger["rows"], last_lines)
 
@@ -130,7 +130,7 @@ class Exit57Tests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(result["ledger_row"]["exit_code"], 57, result)
             self.assertIn("finding", result["stderr_tail"].lower(), result)
 
-            ledger = (root / "runs" / "ledger.jsonl").read_text().splitlines()
+            ledger = (root / "runs" / "ledger.jsonl").read_text(encoding="utf-8").splitlines()
             self.assertEqual(len(ledger), 1)
             self.assertEqual(json.loads(ledger[0])["exit_code"], 57)
 

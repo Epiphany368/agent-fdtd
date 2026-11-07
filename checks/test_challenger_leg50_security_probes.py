@@ -82,8 +82,11 @@ class TestAdvancedPathTraversalProbes(unittest.TestCase):
                     f"Unexpected kind for {repr(payload)}: {res_cert}",
                 )
             except ValueError as ve:
-                # Embedded null byte raises ValueError in Python's os.path.realpath
-                self.assertIn("null byte", str(ve).lower(), f"Unexpected ValueError: {ve}")
+                # Embedded null byte/character raises ValueError in Python's os.path.realpath / os.stat
+                self.assertTrue(
+                    "null byte" in str(ve).lower() or "null character" in str(ve).lower(),
+                    f"Unexpected ValueError: {ve}",
+                )
 
             # inspect_breakpoint
             try:
@@ -95,7 +98,10 @@ class TestAdvancedPathTraversalProbes(unittest.TestCase):
                     f"Unexpected kind for {repr(payload)}: {res_bp}",
                 )
             except ValueError as ve:
-                self.assertIn("null byte", str(ve).lower(), f"Unexpected ValueError: {ve}")
+                self.assertTrue(
+                    "null byte" in str(ve).lower() or "null character" in str(ve).lower(),
+                    f"Unexpected ValueError: {ve}",
+                )
 
             # resume_run
             try:
@@ -107,7 +113,10 @@ class TestAdvancedPathTraversalProbes(unittest.TestCase):
                     f"Unexpected kind for {repr(payload)}: {res_res}",
                 )
             except ValueError as ve:
-                self.assertIn("null byte", str(ve).lower(), f"Unexpected ValueError: {ve}")
+                self.assertTrue(
+                    "null byte" in str(ve).lower() or "null character" in str(ve).lower(),
+                    f"Unexpected ValueError: {ve}",
+                )
 
     def test_create_project_zero_filesystem_escape(self):
         """create_project must NEVER write files outside configs/projects/ under any traversal payload."""

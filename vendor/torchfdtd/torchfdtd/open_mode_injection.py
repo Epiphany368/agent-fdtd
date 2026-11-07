@@ -47,11 +47,19 @@ class OpenPortOptions:
 class OpenModalLaunch(ModalLaunch):
     cladding_epsilon: float
     fixed_transverse_slices: tuple
+    normal_nodes_um: tuple | None = None
 
     def detector_mode(self, coordinate_um):
-        q = (coordinate_um-self.normal_origin_um)/self.normal_step_um
-        if not math.isclose(q, round(q), abs_tol=2e-5, rel_tol=0):
-            raise ValueError('Validated modal detectors must lie on longitudinal E-node planes.')
+        if self.normal_nodes_um is None:
+            q = (coordinate_um-self.normal_origin_um)/self.normal_step_um
+            if not math.isclose(q, round(q), abs_tol=2e-5, rel_tol=0):
+                raise ValueError('Validated modal detectors must lie on longitudinal E-node planes.')
+        else:
+            nd=np.asarray(self.normal_nodes_um); k=int(np.argmin(abs(nd-coordinate_um)))
+            if k<1 or k>=len(nd)-1 or not np.isclose(nd[k],coordinate_um,rtol=0,atol=1e-7):
+                raise ValueError('Validated modal detectors must lie on interior longitudinal E-node planes.')
+            if not np.allclose(np.diff(nd)[k-1:k+1],self.normal_step_um,rtol=1e-10,atol=1e-12):
+                raise ValueError('Detector local mesh must match the solved local longitudinal mode step.')
         fields = self.mode.fields.copy()
         w = 'xyz'.index(self.mode.normal)
         factor = cmath.cos(self.mode.beta_per_um*self.normal_step_um/2)
@@ -71,10 +79,10 @@ def _open_geometry(project):
     if len(active) != 1:
         raise ValueError('Open modal launch requires exactly one enabled timing source.')
     source = active[0]
-    if (r.dimension != '3d' or r.mesh_type != 'uniform' or r.complex_fields
+    if (r.dimension != '3d' or r.complex_fields
             or r.material_sampling != 'yee' or r.precision != 'float32'
             or r.interface_method != 'staircase'):
-        raise ValueError('Open modal launch requires real FP32 uniform 3D staircase Yee sampling.')
+        raise ValueError('Open modal launch requires real FP32 3D staircase Yee sampling.')
     if any(m.model != 'dielectric' or m.oscillators for m in project.materials):
         raise ValueError('Open modal launch requires nondispersive isotropic materials.')
     if (source.kind != 'plane' or source.injection != 'soft' or source.pulse != 'gaussian'
@@ -105,6 +113,8 @@ def _open_geometry(project):
     if (k < 2 or k+2 >= len(nodes) or nodes[k-1] < lo or nodes[k+2] > hi
             or not math.isclose(source.center[w], float(nodes[k]), abs_tol=1e-7, rel_tol=0)):
         raise ValueError('Open modal source must lie on an E-node with two interior cells before CPML.')
+    from .mesh import local_uniform_step
+    local_uniform_step(r,w,k-1,k+2)
     return project, source, w, k, 1 if source.direction == '+' else -1, tuple(fixed)
 
 
@@ -129,15 +139,17 @@ def prepare_open_modal_launch(project, permittivity, *, options, mode_index=0,
     if type(mode_index) is not int or not 0 <= mode_index < num_modes:
         raise ValueError('Invalid open mode index.')
     from .open_mode_ports import solve_open_waveguide_modes
+    from .mesh import local_uniform_step
+    h=local_uniform_step(r,w,k-1,k+2)
     modes = solve_open_waveguide_modes(permittivity, region=r, normal=source.normal,
         wavelength_um=source.wavelength, cladding_epsilon=options.cladding_epsilon,
         num_modes=num_modes, target_neff=options.target_neff,
         mode_budget_bytes=options.mode_budget_bytes,
-        confinement_tolerance=options.confinement_tolerance)
+        confinement_tolerance=options.confinement_tolerance,longitudinal_step_um=h)
     mode = modes[mode_index]
     epsilon = mode.sampled_epsilon
     beta = mode.beta_per_um
-    h, dt = r.axis_steps[w], r.time_step
+    dt = r.time_step
     omega = 2*np.pi*C0/(source.wavelength*1e-6)
     kt = 2*np.sin(omega*dt/2)/(C0*dt)*1e-6
     amplitude_scale = float(np.max(np.abs(mode.fields[..., :3])))
@@ -168,4 +180,5 @@ def prepare_open_modal_launch(project, permittivity, *, options, mode_index=0,
                             +repr(options).encode()).hexdigest()
     return OpenModalLaunch(mode, epsilon, signature, source_signature,
         float(r.mesh_nodes[w][0]), h, k, direction, mode.beta_tilde_per_um,
-        float(kt), tuple(terms), digest, float(options.cladding_epsilon), fixed)
+        float(kt), tuple(terms), digest, float(options.cladding_epsilon), fixed,
+        None if r.mesh_type=='uniform' else tuple(float(x) for x in r.mesh_nodes[w]))

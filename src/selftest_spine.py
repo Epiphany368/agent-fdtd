@@ -22,13 +22,13 @@ CONFIG_PATH = Path(os.environ['PARITY_CONFIG'])
 
 
 def git(args, cwd):
-    result = subprocess.run(['git', '-C', str(cwd), *args], text=True, capture_output=True)
+    result = subprocess.run(['git', '-C', str(cwd), *args], text=True, encoding='utf-8', errors='replace', capture_output=True)
     return result.stdout.strip() if result.returncode == 0 else None
 
 
 def main():
-    config = json.loads(CONFIG_PATH.read_text())
-    pin = json.loads((PROJECT / 'configs/baseline-pin.json').read_text())
+    config = json.loads(CONFIG_PATH.read_text(encoding='utf-8'))
+    pin = json.loads((PROJECT / 'configs/baseline-pin.json').read_text(encoding='utf-8'))
     fork = PROJECT / pin['solver_root']
     upstream = PROJECT / pin['upstream']['solver_root']
     snapshot = Path(os.environ['PARITY_SNAPSHOT'])
@@ -72,7 +72,8 @@ def main():
         'checks': checks,
     }
     Path(os.environ['EFFECTIVE_JSON']).write_text(
-        json.dumps(effective, indent=2, ensure_ascii=False, allow_nan=False) + '\n')
+        json.dumps(effective, indent=2, ensure_ascii=False, allow_nan=False) + '\n',
+        encoding='utf-8')
 
     for name, ok in checks.items():
         print(f'{"PASS" if ok else "FAIL"} {name}')

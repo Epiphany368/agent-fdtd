@@ -19,7 +19,7 @@ import torch
 from .differentiable import AdjointOptions
 from .mode_injection import ApertureModalLaunch, ModeInjectedPlaneSimulation, _profile
 from .mode_network import ModeNetworkResult, _decompose, _fixed_section
-from .mode_ports import C0, solve_waveguide_modes
+from .mode_ports import C0, solve_waveguide_modes, _sample_permittivity_component
 from .models import FieldMonitor, Project
 from .recomputed_batch import recompute_cases
 from .streamed import StreamedAdjointOptions
@@ -231,8 +231,7 @@ def prepare_aperture_modal_launch(project, permittivity, *, mode_index=0, num_mo
     epsilon = np.empty((*shape, 3), dtype=dtype)
     for c in range(3):
         coords = np.meshgrid(*mode.component_axes('E'+'xyz'[c]), indexing='ij')
-        values = permittivity(*coords) if callable(permittivity) else permittivity
-        epsilon[..., c] = np.broadcast_to(values, shape)
+        epsilon[..., c] = _sample_permittivity_component(permittivity, coords, c, shape, dtype)
     if np.min(epsilon) < 1:
         raise ValueError('Native FDTD CFL requires epsilon at least one.')
     amplitude_scale = float(np.max(np.abs(mode.fields[..., :3])))
@@ -447,8 +446,7 @@ class ModeBranchNetwork:
             axes = [float(r.mesh_nodes[a][0])+(np.arange(r.shape[a])+(.5 if a == c else 0.))*r.axis_steps[a]
                     for a in (u, v)]
             coords = np.meshgrid(*axes, indexing='ij')
-            values = section(*coords) if callable(section) else section
-            cross[..., c] = np.broadcast_to(values, cross.shape[:2])
+            cross[..., c] = _sample_permittivity_component(section, coords, c, cross.shape[:2], dtype)
         return torch.tensor(np.stack([_profile(cross[..., c], port.normal) for c in range(3)], axis=-1), device=device)
 
     def reference_epsilon(self, *, port, device='cpu'):

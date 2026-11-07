@@ -194,7 +194,7 @@ def _resident_reservation(project, options, device, spectral=None, *, pole_count
         and not torch.is_grad_enabled() and device.type=='cuda'
         and not pole_count and not region.complex_fields
         and workspace_model=='fused_cuda_allocations'
-        and region.mesh_type=='uniform' and region.cuda_kernel=='fused'
+        and region.mesh_type in ('uniform', 'graded') and region.cuda_kernel=='fused'
         and not (boundary.pmc_lower or boundary.pmc_upper)
         and options.storage=='device' and options.checkpoint_transfers=='sync')
     forward_diagnostics={}

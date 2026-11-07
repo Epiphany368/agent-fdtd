@@ -599,7 +599,12 @@ class ChallengerLeg44LauncherIntegrationTests(unittest.TestCase):
         script_file.write_text(script_body, encoding='utf-8')
         self.created_scripts.append(script_file)
 
-        import fcntl
+        try:
+            import fcntl as _fcntl
+        except ImportError:
+            _fcntl = None
+            import msvcrt as _msvcrt
+
         def _wait_for_lock(timeout=300):
             lock_path = ROOT / 'runs' / '.lock'
             if not lock_path.is_file():
@@ -607,9 +612,19 @@ class ChallengerLeg44LauncherIntegrationTests(unittest.TestCase):
             start = time.time()
             while time.time() - start < timeout:
                 try:
-                    with lock_path.open('a') as f:
-                        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                        fcntl.flock(f, fcntl.LOCK_UN)
+                    with lock_path.open('a+') as f:
+                        if _fcntl is not None:
+                            _fcntl.flock(f, _fcntl.LOCK_EX | _fcntl.LOCK_NB)
+                            _fcntl.flock(f, _fcntl.LOCK_UN)
+                        else:
+                            f.seek(0, os.SEEK_END)
+                            if f.tell() == 0:
+                                f.write('\0')
+                                f.flush()
+                            f.seek(0)
+                            _msvcrt.locking(f.fileno(), _msvcrt.LK_NBLCK, 1)
+                            f.seek(0)
+                            _msvcrt.locking(f.fileno(), _msvcrt.LK_UNLCK, 1)
                     return True
                 except (BlockingIOError, OSError):
                     time.sleep(2)

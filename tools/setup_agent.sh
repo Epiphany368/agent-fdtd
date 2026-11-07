@@ -42,6 +42,9 @@ log "bootstrapping torchfdtd-platform in $ROOT"
 if [ -x "$ROOT/.venv/bin/python" ]; then
     PY="$ROOT/.venv/bin/python"
     log "using existing virtual environment: $PY"
+elif [ -x "$ROOT/.venv/Scripts/python.exe" ]; then
+    PY="$ROOT/.venv/Scripts/python.exe"
+    log "using existing virtual environment: $PY"
 elif [ "$SKIP_PIP" -eq 1 ]; then
     PY=$(command -v python3 || command -v python || true)
     [ -n "$PY" ] || { echo "[setup_agent] ERROR: python3 not found" >&2; exit 69; }
@@ -50,12 +53,17 @@ else
     [ -n "$SYS_PY" ] || { echo "[setup_agent] ERROR: python3 not found" >&2; exit 69; }
     log "creating .venv with $SYS_PY"
     "$SYS_PY" -m venv "$ROOT/.venv" || exit 65
-    PY="$ROOT/.venv/bin/python"
+    if [ -x "$ROOT/.venv/bin/python" ]; then
+        PY="$ROOT/.venv/bin/python"
+    else
+        PY="$ROOT/.venv/Scripts/python.exe"
+    fi
 fi
 
 if [ "$SKIP_PIP" -eq 0 ]; then
     log "installing dependencies and torchfdtd-platform-mcp entry point..."
     "$PY" -m pip install --quiet -r "$ROOT/requirements.txt" || exit 65
+    "$PY" -m pip install --quiet "mcp>=1.0,<2" || exit 65
     "$PY" -m pip install --quiet --no-build-isolation --no-deps -e "$ROOT" 2>/dev/null \
         || "$PY" -m pip install --quiet -e "$ROOT" || true
 fi

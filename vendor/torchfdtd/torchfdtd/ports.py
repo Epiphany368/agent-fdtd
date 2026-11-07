@@ -9,6 +9,7 @@ A port cross-section that carries a Torch graph is rejected with
 FixedPortSectionError before any eigenproblem is assembled.
 """
 from dataclasses import dataclass
+import functools
 import math
 import warnings
 
@@ -47,7 +48,10 @@ def fixed_port_section(section):
             return value.detach().cpu().numpy()
         return value
     if callable(section):
-        return lambda u, v: checked(section(u, v))
+        @functools.wraps(section)
+        def wrapped(u, v, *args, **kwargs):
+            return checked(section(u, v, *args, **kwargs))
+        return wrapped
     return checked(section)
 
 

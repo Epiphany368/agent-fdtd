@@ -30,14 +30,14 @@ from torchfdtd.injection import oneway_tables, oneway_plan
 C0 = 299792458.
 
 def write_json(path, value):
-    Path(path).write_text(json.dumps(value, indent=2, allow_nan=False, ensure_ascii=False) + '\n')
+    Path(path).write_text(json.dumps(value, indent=2, allow_nan=False, ensure_ascii=False) + '\n', encoding='utf-8')
 
 def load_run():
     if 'RUN_DIR_ABS' not in os.environ:
         raise RuntimeError('Use tools/run.sh to execute simulations')
-    config = json.loads(Path(os.environ['PARITY_CONFIG']).read_text())
+    config = json.loads(Path(os.environ['PARITY_CONFIG']).read_text(encoding='utf-8'))
     run = Path(os.environ['RUN_DIR_ABS'])
-    write_json(os.environ['EFFECTIVE_JSON'], dict(config=config, solver_pin=json.loads((ROOT/'configs/baseline-pin.json').read_text()),
+    write_json(os.environ['EFFECTIVE_JSON'], dict(config=config, solver_pin=json.loads((ROOT/'configs/baseline-pin.json').read_text(encoding='utf-8')),
                conventions=dict(fourier='exp(+i omega t)', normal='+x', R='-signed reflected flux',
                T='signed transmitted flux', denominator='matched empty-domain flux; incident-line cross-check',
                geometry_units='um', time_units='s'), resolved_cases=[]))

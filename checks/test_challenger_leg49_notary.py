@@ -308,8 +308,11 @@ class AdversarialCheck11NotaryTamperAttacks(unittest.TestCase):
         (td / "solver_telemetry.json").write_text(json.dumps(tel, indent=2), encoding="utf-8")
 
         proc = subprocess.run(
-            [sys.executable, "-B", "checks/post_notary.py", str(td)],
+            [sys.executable, "-B", str(ROOT / "checks" / "post_notary.py"), str(td)],
+            cwd=str(ROOT),
             text=True,
+            encoding="utf-8",
+            errors="replace",
             capture_output=True,
         )
         cert_path = td / "verification_certificate.json"

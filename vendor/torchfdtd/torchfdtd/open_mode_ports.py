@@ -12,22 +12,35 @@ import numpy as np
 from scipy import sparse
 from scipy.sparse.linalg import eigs
 
-from .mode_ports import COMPONENTS
+from .mode_ports import COMPONENTS, _canonical_electric_pivot, _sample_permittivity_component
 
 
-def _axes(shape, spacing, origin, transverse, component):
+def _axes(shape, spacing, origin, transverse, component, nodes=None):
     c = 'xyz'.index(component[1].lower())
     offsets = [(.5 if axis == c else 0.) if component[0] == 'E'
                else (0. if axis == c else .5) for axis in transverse]
+    if nodes is not None:
+        return tuple(np.asarray(nodes[i][:-1])+offsets[i]*np.diff(nodes[i]) for i in range(2))
     return tuple(origin[i]+(np.arange(shape[i])+offsets[i])*spacing[i] for i in range(2))
 
 
-def _weights(shape, spacing, origin, transverse, bounds, periodic, component):
-    axes = _axes(shape, spacing, origin, transverse, component)
+def _weights(shape, spacing, origin, transverse, bounds, periodic, component, nodes=None):
+    axes = _axes(shape, spacing, origin, transverse, component, nodes)
     weights = []
-    for axis, h, (lo, hi), wrap in zip(axes, spacing, bounds, periodic):
-        weights.append(np.full(len(axis), h) if wrap else
-                       np.maximum(0., np.minimum(axis+h/2, hi)-np.maximum(axis-h/2, lo)))
+    for i,(axis, h, (lo, hi), wrap) in enumerate(zip(axes, spacing, bounds, periodic)):
+        if nodes is None:
+            weights.append(np.full(len(axis), h) if wrap else
+                           np.maximum(0., np.minimum(axis+h/2, hi)-np.maximum(axis-h/2, lo)))
+        else:
+            nd=np.asarray(nodes[i]); widths=np.diff(nd)
+            c='xyz'.index(component[1].lower())
+            half=(transverse[i]==c) if component[0]=='E' else (transverse[i]!=c)
+            if half:
+                left,right=nd[:-1],nd[1:]
+            else:
+                left=nd[:-1]-.5*np.r_[widths[-1] if wrap else widths[0],widths[:-1]]
+                right=nd[:-1]+.5*widths
+            weights.append(right-left if wrap else np.maximum(0.,np.minimum(right,hi)-np.maximum(left,lo)))
     return weights[0][:, None]*weights[1][None, :]*1e-12
 
 
@@ -56,6 +69,7 @@ class OpenWaveguideMode:
     diagnostics: dict
     precision: str = 'float32'
     boundary: str = 'cpml'
+    transverse_nodes_um: tuple | None = None
 
     def __post_init__(self):
         # Bytes own the immutable payload, so callers cannot re-enable writes.
@@ -63,6 +77,8 @@ class OpenWaveguideMode:
             value = np.ascontiguousarray(getattr(self, name), dtype=dtype)
             frozen = np.frombuffer(value.tobytes(), dtype=dtype).reshape(value.shape)
             object.__setattr__(self, name, frozen)
+        if self.transverse_nodes_um is not None:
+            object.__setattr__(self,'transverse_nodes_um',tuple(tuple(float(x) for x in a) for a in self.transverse_nodes_um))
 
     @property
     def neff(self):
@@ -77,12 +93,12 @@ class OpenWaveguideMode:
         if component not in COMPONENTS:
             raise ValueError('Unknown field component.')
         return _axes(self.fields.shape[:2], self.spacing_um, self.origin_um,
-                     self.transverse_axes, component)
+                     self.transverse_axes, component, self.transverse_nodes_um)
 
     def _power_weights(self):
         return tuple(_weights(self.fields.shape[:2], self.spacing_um, self.origin_um,
             self.transverse_axes, self.physical_bounds_um, self.periodic_axes,
-            'E'+'xyz'[axis]) for axis in self.transverse_axes)
+            'E'+'xyz'[axis], self.transverse_nodes_um) for axis in self.transverse_axes)
 
     def power(self):
         """Signed physical-aperture reduced power, not stretched-PML power."""
@@ -114,6 +130,22 @@ class OpenWaveguideMode:
             coords = self.component_axes(name)
             indices, fractions = [], []
             for i, axis in enumerate(self.transverse_axes):
+                if self.transverse_nodes_um is not None:
+                    x=np.asarray(points[:,axis],float); cc=coords[i]
+                    if self.periodic_axes[i]:
+                        period=self.transverse_nodes_um[i][-1]-self.transverse_nodes_um[i][0]
+                        x=(x-cc[0])%period+cc[0]
+                        extended=np.r_[cc,cc[0]+period]
+                        low=np.searchsorted(extended,x,side='right')-1
+                        low=np.clip(low,0,len(cc)-1)
+                    else:
+                        if np.any(x<cc[0]-1e-6) or np.any(x>cc[-1]+1e-6):
+                            raise ValueError('Requested plane samples lie outside the nonperiodic Yee support.')
+                        x=np.clip(x,cc[0],cc[-1]);extended=cc
+                        low=np.clip(np.searchsorted(cc,x,side='right')-1,0,len(cc)-2)
+                    indices.append(low)
+                    fractions.append((x-extended[low])/(extended[low+1]-extended[low]))
+                    continue
                 q = (points[:, axis]-coords[i][0])/self.spacing_um[i]
                 if not self.periodic_axes[i]:
                     if np.any(q < -1e-6) or np.any(q > len(coords[i])-1+1e-6):
@@ -147,8 +179,29 @@ class OpenWaveguideMode:
         if math.prod(len(a) for a in axes) != len(points):
             raise ValueError('Quadrature must cover a full tensor-product rectangle.')
         expected_axes = []
-        for axis, (lo, hi) in zip(axes, self.physical_bounds_um):
-            expected = lo+(np.arange(len(axis))+.5)*(hi-lo)/len(axis)
+        native_widths=[]
+        for local_axis, (axis, (lo, hi)) in enumerate(zip(axes, self.physical_bounds_um)):
+            if self.transverse_nodes_um is None:
+                expected = lo+(np.arange(len(axis))+.5)*(hi-lo)/len(axis)
+            else:
+                nd=np.asarray(self.transverse_nodes_um[local_axis])
+                native_edges=np.r_[lo,nd[(nd>lo+1e-10)&(nd<hi-1e-10)],hi]
+                native_mid=(native_edges[:-1]+native_edges[1:])/2
+                if len(axis)==len(native_mid) and np.allclose(axis,native_mid,atol=1e-6,rtol=2e-6):
+                    # Coordinates become FP32 on GPU. Recovering edges by an
+                    # alternating recurrence amplifies rounding; use immutable
+                    # original mesh edges for its native midpoint quadrature.
+                    edges=native_edges
+                elif np.allclose(axis,lo+(np.arange(len(axis))+.5)*(hi-lo)/len(axis),atol=1e-6,rtol=2e-6):
+                    edges=np.linspace(lo,hi,len(axis)+1)
+                else:
+                    edges=[lo]
+                    for center in axis: edges.append(2*float(center)-edges[-1])
+                    edges=np.asarray(edges)
+                if np.any(np.diff(edges)<=0) or not np.isclose(edges[-1],hi,rtol=2e-6,atol=1e-6):
+                    raise ValueError('Nonuniform quadrature must tile the full physical rectangle.')
+                expected=(edges[:-1]+edges[1:])/2
+                native_widths.append(np.diff(edges))
             if not np.allclose(axis, expected, atol=1e-6, rtol=2e-6):
                 raise ValueError('Quadrature does not cover the declared physical rectangle.')
             expected_axes.append(expected)
@@ -156,7 +209,12 @@ class OpenWaveguideMode:
         if len(np.unique(pairs, axis=0)) != len(points):
             raise ValueError('Quadrature has duplicate points.')
         area = math.prod(hi-lo for lo, hi in self.physical_bounds_um)*1e-12
-        if not np.allclose(weights, area/len(points), rtol=2e-5, atol=0):
+        expected_weights=area/len(points)
+        if self.transverse_nodes_um is not None:
+            expected_weights=np.ones(len(points))*1e-12
+            for i,axis in enumerate(self.transverse_axes):
+                expected_weights*=native_widths[i][np.searchsorted(axes[i],points[:,axis])]
+        if not np.allclose(weights, expected_weights, rtol=2e-5, atol=0):
             raise ValueError('Quadrature weights do not match the physical rectangle.')
         sampled = self.sample_plane(points)
         u, v = self.transverse_axes
@@ -171,12 +229,12 @@ class OpenWaveguideMode:
 
 def solve_open_waveguide_modes(permittivity, *, region, normal, wavelength_um,
         cladding_epsilon, num_modes=1, target_neff=None, mode_budget_bytes=2*1024**3,
-        tolerance=2e-6, maxiter=3000, confinement_tolerance=1e-4):
+        tolerance=2e-6, maxiter=3000, confinement_tolerance=1e-4, longitudinal_step_um=None):
     """Return fixed bound modes; reject nonconfined/near-cutoff PML box modes.
 
     One scalar isotropic material callable is sampled independently at Eu/Ev/Ew.
     Arrays/tensors representing an unspecific electric staggering are rejected.
-    Sparse LU may use O(N²) fill. The preflight reserves eight dense complex
+    Sparse LU may use O(N²) fill. The preflight reserves four dense complex128
     matrices of eigensystem dimension plus vectors/sampling/operator overhead.
     This conservative admission is not a hard process-RSS guarantee.
 
@@ -201,7 +259,8 @@ def solve_open_waveguide_modes(permittivity, *, region, normal, wavelength_um,
         raise ValueError('Supply a fixed scalar or isotropic material callable, not an unstaggered array.')
     from .models import Region
     region = Region.model_validate(region.model_dump())
-    plan = plan_open_mode_operators(region, normal=normal, wavelength_um=wavelength_um)
+    plan = plan_open_mode_operators(region, normal=normal, wavelength_um=wavelength_um,
+                                    longitudinal_step_um=longitudinal_step_um)
     w = 'xyz'.index(normal)
     transverse = ((w+1)%3, (w+2)%3)
     shape = tuple(region.shape[a] for a in transverse)
@@ -210,7 +269,7 @@ def solve_open_waveguide_modes(permittivity, *, region, normal, wavelength_um,
         raise ValueError('Too many requested modes for the transverse eigensystem.')
     candidates = min(dimension-2, max(num_modes+6, 2*num_modes))
     ncv = min(dimension, max(4*candidates+1, 40))
-    required = 8*dimension*dimension*8+8*dimension*(ncv+4*candidates)+2048*n
+    required = 4*dimension*dimension*16+16*dimension*(ncv+4*candidates)+4096*n
     required += int(plan.get('required_bytes', plan.get('workspace_bytes', 0)))
     if required > mode_budget_bytes:
         raise ValueError(f'Open mode dense-fill engineering reservation exceeds mode budget: {required} > {mode_budget_bytes}.')
@@ -220,6 +279,8 @@ def solve_open_waveguide_modes(permittivity, *, region, normal, wavelength_um,
         raise ValueError(f'Open mode reservation exceeds 80% of available host memory: {required} > {int(.8*available)}.')
     spacing = tuple(region.axis_steps[a] for a in transverse)
     origin = tuple(float(region.mesh_nodes[a][0]) for a in transverse)
+    nodes = None if region.mesh_type=='uniform' else tuple(tuple(region.mesh_nodes[a]) for a in transverse)
+    hw = plan['longitudinal_spacing_um']
     periodic = tuple(region.boundaries.pair(a)[0].kind == 'periodic' for a in transverse)
     sampled = []
     collar = np.zeros(shape, dtype=bool)
@@ -230,8 +291,8 @@ def solve_open_waveguide_modes(permittivity, *, region, normal, wavelength_um,
             mask |= np.arange(shape[i]) >= shape[i]-hi
             collar |= mask[:, None] if i == 0 else mask[None, :]
     for axis in (*transverse, w):
-        coords = np.meshgrid(*_axes(shape, spacing, origin, transverse, 'E'+'xyz'[axis]), indexing='ij')
-        raw = permittivity(*coords) if callable(permittivity) else permittivity
+        coords = np.meshgrid(*_axes(shape, spacing, origin, transverse, 'E'+'xyz'[axis], nodes), indexing='ij')
+        raw = _sample_permittivity_component(permittivity, coords, axis, shape, np.float32) if callable(permittivity) else permittivity
         if getattr(raw, 'requires_grad', False):
             raise ValueError('Open mode profiles are fixed; trainable material samples are unsupported.')
         if np.iscomplexobj(raw):
@@ -242,36 +303,40 @@ def solve_open_waveguide_modes(permittivity, *, region, normal, wavelength_um,
         if not np.all(value[collar] == np.float32(cladding_epsilon)):
             raise ValueError('Material must equal fixed homogeneous cladding in CPML plus one-cell collar.')
         sampled.append(value.ravel())
-    operators = prepare_open_mode_operators(region, normal=normal, wavelength_um=wavelength_um)
-    up, um, vp, vm = operators.up, operators.um, operators.vp, operators.vm
+    operators = prepare_open_mode_operators(region, normal=normal, wavelength_um=wavelength_um,
+                                             longitudinal_step_um=hw)
+    # High index contrasts and 10nm cells make P@Q ill-conditioned in FP32.
+    # Preserve native rounded derivatives, then assemble/factorize in FP64.
+    # Only the admitted, normalized six-field packet is rounded for FP32 FDTD.
+    up, um, vp, vm = (a.astype(np.complex128) for a in
+                     (operators.up, operators.um, operators.vp, operators.vm))
     k = np.float32(operators.temporal_k_per_um)
-    ident = sparse.eye(n, dtype=np.complex64, format='csr')
-    eu, ev, ew = [sparse.diags(x.astype(np.complex64), format='csr') for x in sampled]
-    iw = sparse.diags((1/sampled[2]).astype(np.complex64), format='csr')
+    ident = sparse.eye(n, dtype=np.complex128, format='csr')
+    eu, ev, ew = [sparse.diags(x.astype(np.complex128), format='csr') for x in sampled]
+    iw = sparse.diags(1/sampled[2].astype(np.complex128), format='csr')
     p = sparse.bmat([[-up@iw@vm/k, k*ident+up@iw@um/k],
-                     [-k*ident-vp@iw@vm/k, vp@iw@um/k]], format='csr').astype(np.complex64)
+                     [-k*ident-vp@iw@vm/k, vp@iw@um/k]], format='csr').astype(np.complex128)
     q = sparse.bmat([[um@vp/k, -k*ev-um@up/k],
-                     [k*eu+vm@vp/k, -vm@up/k]], format='csr').astype(np.complex64)
-    operator = (p@q).astype(np.complex64)
+                     [k*eu+vm@vp/k, -vm@up/k]], format='csr').astype(np.complex128)
+    operator = (p@q).astype(np.complex128)
     maximum = math.sqrt(max(float(x.max()) for x in sampled))
     target = maximum*1.001 if target_neff is None else target_neff
     if not np.isfinite(target) or target <= math.sqrt(cladding_epsilon):
         raise ValueError('target_neff must be finite and above the cladding light line.')
     # An explicit target is the physical beta/k0, not beta_t/k_t.
     target_beta_t = float(k)*target if target_neff is None else 2*math.sin(
-        math.pi*target*region.axis_steps[w]/wavelength_um)/region.axis_steps[w]
-    shift = np.complex64(target_beta_t**2)
-    start = np.random.default_rng(918).normal(size=dimension).astype(np.complex64)
+        math.pi*target*hw/wavelength_um)/hw
+    shift = np.complex128(target_beta_t**2)
+    start = np.random.default_rng(918).normal(size=dimension).astype(np.complex128)
     values, vectors = eigs(operator, k=candidates, sigma=shift, which='LM',
         tol=tolerance, maxiter=maxiter, ncv=ncv, v0=start)
     weights = tuple(_weights(shape, spacing, origin, transverse, operators.physical_bounds_um,
-        periodic, 'E'+'xyz'[axis]) for axis in transverse)
+        periodic, 'E'+'xyz'[axis], nodes) for axis in transverse)
     epsilon_global = np.empty((*shape, 3), dtype=np.float32)
     for local, global_axis in enumerate((*transverse, w)):
         epsilon_global[..., global_axis] = sampled[local].reshape(shape)
     epsilon_global.setflags(write=False)
     modes, failures = [], []
-    hw = region.axis_steps[w]
     for index in np.argsort(np.abs(values-shift)):
         beta_t = complex(np.sqrt(values[index]))
         if beta_t.real <= 0: beta_t = -beta_t
@@ -282,13 +347,13 @@ def solve_open_waveguide_modes(permittivity, *, region, normal, wavelength_um,
         beta = complex(2*np.arcsin(beta_t*hw/2)/hw)
         if abs(beta.imag) > max(confinement_tolerance, 20*tolerance)*beta.real:
             failures.append('attenuating/leaky PML mode'); continue
-        electric = vectors[:, index].astype(np.complex64)
-        magnetic = (q@electric)/np.complex64(beta_t)
+        electric = vectors[:, index].astype(np.complex128)
+        magnetic = (q@electric)/np.complex128(beta_t)
         elu, elv, hlu, hlv = electric[:n], electric[n:], magnetic[:n], magnetic[n:]
         elw = 1j*(iw@(um@hlv-vm@hlu))/k
         hlw = -1j*(up@elv-vp@elu)/k
         all_e, all_h = np.r_[elu, elv, elw], np.r_[hlu, hlv, hlw]
-        fields = np.empty((*shape, 6), dtype=np.complex64)
+        fields = np.empty((*shape, 6), dtype=np.complex128)
         for local, global_axis in enumerate((*transverse, w)):
             fields[..., global_axis] = all_e.reshape(3, *shape)[local]
             fields[..., 3+global_axis] = all_h.reshape(3, *shape)[local]
@@ -330,9 +395,9 @@ def solve_open_waveguide_modes(permittivity, *, region, normal, wavelength_um,
         if not np.isfinite(residual) or not np.isfinite(maxwell) or max(residual, maxwell) > max(100*tolerance, 2e-4):
             if cluster:
                 raise ValueError('Degenerate eigenspace rotation fails fresh eigenpair or six-field Maxwell residual.')
-            failures.append('six-field Maxwell residual'); continue
+            failures.append(f'six-field Maxwell residual (eigen={residual:.6g}, Maxwell={maxwell:.6g})'); continue
         fields /= math.sqrt(power)
-        pivot = fields[..., :3].reshape(-1)[np.argmax(np.abs(fields[..., :3]))]
+        pivot = _canonical_electric_pivot(np.moveaxis(fields[..., :3], -1, 0).ravel(), shape)
         fields *= np.complex64(np.exp(-1j*np.angle(pivot)))
         if any(abs(_power_pair(fields, old.fields, weights, transverse)) > max(1e-3, 50*tolerance) for old in modes):
             raise ValueError('Distinct-beta modes have nonorthogonal physical power; refusing to substitute another mode family.')
@@ -341,10 +406,10 @@ def solve_open_waveguide_modes(permittivity, *, region, normal, wavelength_um,
             fields, float(residual), float(maxwell), operators.region_signature,
             tuple(operators.physical_bounds_um), epsilon_global, periodic,
             dict(collar_energy_fraction=tail, engineering_reservation_bytes=required,
-                 eigensolver_dtype='complex64', material_dtype='float32',
+                 eigensolver_dtype='complex128', material_dtype='float32',
                  physical_power_gram_tolerance=max(1e-3, 50*tolerance),
                  branch='positive-real beta_t; principal complex asin within propagation band',
                  degeneracy_relative_beta_t_tolerance=cluster_tolerance,
-                 degenerate_predecessors=len(cluster), injectable=False)))
+                 degenerate_predecessors=len(cluster), injectable=False),transverse_nodes_um=nodes))
         if len(modes) == num_modes: return tuple(modes)
     raise ValueError('Insufficient admitted bound modes: '+', '.join(failures))

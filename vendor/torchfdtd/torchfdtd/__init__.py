@@ -206,3 +206,22 @@ from .fabrication import (FeatureSizes, measure_feature_sizes, fabrication_pertu
 from .design_problem import Continuation, DesignProblem
 __all__ += ["bounded_density_layer", "FeatureSizes", "measure_feature_sizes", "fabrication_perturbation",
             "binary_structures", "morphological_open", "square_offsets", "Continuation", "DesignProblem"]
+from .subpixel_waveguide import (
+    build_safe_evanescent_graded_axis,
+    conformal_variant0_cross_section,
+    conformal_variant0_strip_rib_3d,
+    make_conformal_variant0_section,
+)
+from .auto_shutoff import (
+    AutoShutoff,
+    install_auto_shutoff,
+    restore_auto_shutoff,
+)
+from .inverse_design import (
+    DesignRegionDFTAccumulator,
+    SeedScore,
+    assess_forward_step,
+    escape_local_minimum_perturbation,
+    propose_minmax_lp_step,
+    screen_waveguide_seeds_2d,
+)

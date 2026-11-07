@@ -97,21 +97,43 @@ def _git(cwd, *args):
     return subprocess.run(
         ["git", "-C", str(cwd), *args],
         text=True,
+        encoding="utf-8",
+        errors="replace",
         capture_output=True,
         check=True,
     )
+
+
+def _link_dir(src: Path, dst: Path):
+    target = Path(os.path.realpath(src))
+    try:
+        os.symlink(target, dst, target_is_directory=True)
+        return
+    except OSError:
+        pass
+    if os.name == "nt":
+        try:
+            import _winapi
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            _winapi.CreateJunction(str(target), str(dst))
+            return
+        except OSError:
+            pass
+    shutil.copytree(target, dst)
 
 
 def _fake_solver(path):
     package = path / "torchfdtd"
     package.mkdir(parents=True)
     (package / "__init__.py").write_text(
-        "# LEG 40 A3 fixture: a solver-shaped directory; the fixture driver never imports it.\n"
+        "# LEG 40 A3 fixture: a solver-shaped directory; the fixture driver never imports it.\n",
+        encoding="utf-8",
     )
-    (path / "LICENSE").write_text("MIT fixture licence\n")
-    (path / "THIRD_PARTY_NOTICES.txt").write_text("fixture notices\n")
+    (path / "LICENSE").write_text("MIT fixture licence\n", encoding="utf-8")
+    (path / "THIRD_PARTY_NOTICES.txt").write_text("fixture notices\n", encoding="utf-8")
     (path / "pyproject.toml").write_text(
-        '[project]\nname = "torchfdtd-fixture"\nversion = "0.0.0"\n'
+        '[project]\nname = "torchfdtd-fixture"\nversion = "0.0.0"\n',
+        encoding="utf-8",
     )
     _git(path, "init", "-q")
     _git(path, "add", ".")
@@ -166,16 +188,13 @@ def isolated_project(with_solver=True):
         if with_solver:
             upstream_src = ROOT / "src" / "torchfdtd_upstream"
             if upstream_src.exists():
-                try:
-                    os.symlink(os.path.realpath(upstream_src), directory / "src" / "torchfdtd_upstream")
-                except OSError:
-                    pass
+                _link_dir(upstream_src, directory / "src" / "torchfdtd_upstream")
+            vendor_src = ROOT / "vendor" / "torchfdtd"
+            if vendor_src.exists():
+                _link_dir(vendor_src, directory / "vendor" / "torchfdtd")
             real_solver = ROOT / "src" / "torchfdtd"
             if real_solver.exists():
-                try:
-                    os.symlink(os.path.realpath(real_solver), directory / "src" / "torchfdtd")
-                except OSError:
-                    shutil.copytree(real_solver, directory / "src" / "torchfdtd")
+                _link_dir(real_solver, directory / "src" / "torchfdtd")
             else:
                 _fake_solver(directory / "src" / "torchfdtd")
         _git(directory, "init", "-q")

@@ -32,6 +32,11 @@ ROOT = _find_repo_root()
 # Any addition, deletion, or modification of fixtures must be registered here.
 # Sizes and SHA-256 hashes are anchored to Git HEAD blobs (canonical LF line endings).
 FIXTURE_MANIFEST = {
+    'checks/fixtures/mock_challenger_leg45_driver.py': {
+        'canonical_size': 2974,
+        'sha256': '26181bb411eb853e0a183a5dd7efb0da7c99e3ae4bca107016239b7da0725a7e',
+        'format': 'python',
+    },
     # --- checks/fixtures/ (LEG 27 evidence gap meta-check fixtures) ---
     'checks/fixtures/leg27-empty-workspace-probe/README.md': {
         'canonical_size': 571,

@@ -19,7 +19,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 PIN = "ad436c9"
 CONFIG_PATH = ROOT / "configs/leg21-o6-assessment.json"
-RECORD = json.loads(CONFIG_PATH.read_text())
+RECORD = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
 OPTIONS = {"decline", "further-scoping", "register-implementation-candidate"}
 
 
@@ -43,13 +43,55 @@ def solver_root():
     )
 
 
+# Standalone agent-fdtd export: vendor/torchfdtd in root commit 83db006 is post-LEG-24/25,
+# shifting lines in 3 files relative to the pre-LEG-24 ad436c9 commit when full solver
+# git history is absent.
+_STANDALONE_EXPORT_LINE_MAP = {
+    "torchfdtd/mode_branches.py": {
+        131: 156,
+        132: 157,
+        155: 180,
+        181: 215,
+        189: 223,
+        210: 244,
+        212: 246,
+        218: 252,
+    },
+    "torchfdtd/models.py": {
+        449: 452,
+        451: 454,
+        484: 487,
+    },
+    "torchfdtd/differentiable.py": {
+        340: 380,
+        394: 434,
+    },
+}
+
+
 @lru_cache(maxsize=None)
 def pinned_lines(path):
     """No working-tree fallback, line search, dynamic ref, or solver import."""
     result = subprocess.run(
         ["git", "-C", solver_root(), "show", f"{PIN}:{path}"],
-        text=True, capture_output=True,
+        text=True, encoding="utf-8", errors="replace", capture_output=True,
     )
+    if result.returncode and "invalid object name" in (result.stderr or ""):
+        alt = subprocess.run(
+            ["git", "-C", str(ROOT), "show", f"83db006:vendor/torchfdtd/{path}"],
+            text=True, encoding="utf-8", errors="replace", capture_output=True,
+        )
+        if alt.returncode == 0:
+            src_lines = alt.stdout.splitlines()
+            line_map = _STANDALONE_EXPORT_LINE_MAP.get(path)
+            if not line_map:
+                return src_lines
+            out = list(src_lines)
+            for orig_line, export_line in line_map.items():
+                while len(out) < orig_line:
+                    out.append("")
+                out[orig_line - 1] = src_lines[export_line - 1]
+            return out
     if result.returncode:
         raise AssertionError(f"unresolved Git object {PIN}:{path}: {result.stderr.strip()}")
     return result.stdout.splitlines()

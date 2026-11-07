@@ -11,7 +11,11 @@ Stress-tests:
 """
 from __future__ import annotations
 
-import fcntl
+try:
+    import fcntl
+except ImportError:
+    fcntl = None
+    import msvcrt
 import hashlib
 import json
 import os
@@ -204,9 +208,17 @@ class TestChallengerLeg50Resume(unittest.TestCase):
             runs_dir.mkdir(exist_ok=True)
             lock_path = runs_dir / ".lock"
 
-            with open(lock_path, "w") as lock_file:
+            with open(lock_path, "a+") as lock_file:
                 # Acquire exclusive non-blocking lock in test process
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                if fcntl is not None:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                else:
+                    lock_file.seek(0, os.SEEK_END)
+                    if lock_file.tell() == 0:
+                        lock_file.write("\0")
+                        lock_file.flush()
+                    lock_file.seek(0)
+                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
                 try:
                     t0 = time.time()
                     res = platform.submit_run(
@@ -216,7 +228,11 @@ class TestChallengerLeg50Resume(unittest.TestCase):
                     )
                     elapsed = time.time() - t0
                 finally:
-                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                    if fcntl is not None:
+                        fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                    else:
+                        lock_file.seek(0)
+                        msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
 
             # Assert execution returned immediately without hung deadlock
             self.assertLess(elapsed, 10.0, f"Lock contention took {elapsed:.2f}s, potential deadlock")

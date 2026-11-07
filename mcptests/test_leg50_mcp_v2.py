@@ -265,7 +265,7 @@ class TestNotaryCertificateQueries(unittest.IsolatedAsyncioTestCase):
             rdo_bytes = json.dumps(rdo).encode("utf-8")
             (rdir / "solver_telemetry.json").write_bytes(tel_bytes)
             (rdir / "readout.json").write_bytes(rdo_bytes)
-            (rdir / "manifest.json").write_text(json.dumps({"exit_code": 0, "status": "completed"}))
+            (rdir / "manifest.json").write_text(json.dumps({"exit_code": 0, "status": "completed"}), encoding="utf-8")
             cert_data = {
                 "schema_version": "1.0",
                 "run_id": "test_tampered",
@@ -274,10 +274,10 @@ class TestNotaryCertificateQueries(unittest.IsolatedAsyncioTestCase):
                 "readout_sha256": hashlib.sha256(rdo_bytes).hexdigest(),
                 "tags": ["verified:postflight_notary"],
             }
-            (rdir / "verification_certificate.json").write_text(json.dumps(cert_data))
+            (rdir / "verification_certificate.json").write_text(json.dumps(cert_data), encoding="utf-8")
 
             # Tamper readout.json after certificate creation
-            (rdir / "readout.json").write_text(json.dumps({"steps": 9999}))
+            (rdir / "readout.json").write_text(json.dumps({"steps": 9999}), encoding="utf-8")
 
             async with open_session(root=root) as (session, _errlog):
                 cert = await call(session, "get_certificate", {"run_id": "test_tampered"})
@@ -307,7 +307,8 @@ class TestStructuredRefusalTaxonomy(unittest.IsolatedAsyncioTestCase):
             rdir = root / "runs" / "test_incomplete"
             rdir.mkdir(parents=True)
             (rdir / "manifest.json").write_text(
-                json.dumps({"run_id": "test_incomplete", "exit_code": 65, "status": "failed:preflight"})
+                json.dumps({"run_id": "test_incomplete", "exit_code": 65, "status": "failed:preflight"}),
+                encoding="utf-8",
             )
             async with open_session(root=root) as (session, _errlog):
                 cert = await call(session, "get_certificate", {"run_id": "test_incomplete"})
