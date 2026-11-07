@@ -1,8 +1,9 @@
-public export of 6e61d2d
+public export of b1e7cb5
 
 included:
   LICENSE
   README.md
+  README_zh.md
   SKILL.md
   .mcp.json
   requirements.txt

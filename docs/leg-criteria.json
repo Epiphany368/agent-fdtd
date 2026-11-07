@@ -657,6 +657,55 @@
           "exits": []
         }
       ]
+    },
+    {
+      "leg": 51,
+      "goal": "FDTD GPU Performance & Adjoint Memory Characterization",
+      "resource": "GPU",
+      "exits": []
+    },
+    {
+      "leg": 52,
+      "goal": "`TensorPermittivityBatchAdapter`, Batched Differentiable FDTD & Checkpoint Optimizer",
+      "resource": "fork",
+      "exits": []
+    },
+    {
+      "leg": 53,
+      "goal": "Calibrated Vector Mode Overlap & Continuous-Geometry Subpixel Etch-Bias",
+      "resource": "GPU",
+      "exits": []
+    },
+    {
+      "leg": 54,
+      "goal": "Two-Tier Numerical Error Budget & `ScientificClaim` Falsification Gate",
+      "resource": "GPU",
+      "exits": [
+        {
+          "command": null,
+          "exits": [
+            66
+          ]
+        }
+      ]
+    },
+    {
+      "leg": 55,
+      "goal": "Solver-Agnostic `PhotonicExperimentIR` & SQLite WAL Authoritative Experiment Engine",
+      "resource": "neither",
+      "exits": []
+    },
+    {
+      "leg": 56,
+      "goal": "GDS/PDK Dual-Equivalence Delivery Loop",
+      "resource": "GPU",
+      "exits": []
+    },
+    {
+      "leg": 57,
+      "goal": "Isolated-Evaluator SciAgent Falsification Benchmark & Ablation Study",
+      "resource": "GPU",
+      "exits": []
     }
   ]
 }

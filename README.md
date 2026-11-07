@@ -1,5 +1,7 @@
 # AgentFDTD (`agent-fdtd`) — v1.0.1
 
+**Language / 语言:** [English](README.md) | [简体中文](README_zh.md)
+
 **An agent-built, machine-verified FDTD simulation and photonic inverse-design platform.**
 AI proposes a simulation; a process exit status and deterministic post-flight notary decide whether it passed.
 
@@ -146,6 +148,22 @@ Understating the scope is deliberate: an over-claimed release is worse than a na
 
 `STATUS.md` is the derived, current position; `plan.md` is the internal contract and decision
 log (deliberately **not** published in the standalone distribution — `docs/` carries the complete long-form evidence).
+
+---
+
+## Phase 2 Roadmap (`v1.1` $\to$ `v2.0` · Wave E–G: LEG 51–57)
+
+The approved design specification for the next major evolution is tracked in [`docs/spec-agent-fdtd-v2.0.md`](docs/spec-agent-fdtd-v2.0.md). It advances AgentFDTD along two co-designed axes — **Core Differentiable Solver & GPU System Algorithms** and **Computational Scientific Falsification**:
+
+| Milestone | Leg | Focus & Deliverable |
+|---|---|---|
+| **`v1.1.0`** | **LEG 51** | **FDTD GPU Performance & Adjoint Memory Characterization** — Empirical RTX 5070 Ti profiling across grid scales, step counts (`1k–20k`), `CudaStepGraphs (width=1..64)`, `run_tensor_batch (B=1..8)`, and checkpoint storage tiers (`device/host/hierarchical`) |
+| **`v1.1.0`** | **LEG 53** | **Calibrated Vector Mode Overlap & Continuous-Geometry Subpixel Etch-Bias** — Unit-power-verified 2D/3D Lorentz reciprocity mode overlap ($\eta \in [0, 1]$ with $16 P_{\text{in}} P_{\text{fib}}$ normalization) and piecewise-differentiable M1 subpixel boundary parameterization with continuous $\pm 10\text{ nm}$ etch-bias evaluation |
+| **`v1.1.0`** | **LEG 54** | **Two-Tier Numerical Error Budget & `ScientificClaim` Falsification Gate** — Distinguishes `assurance_level = "estimated"` (Level A) vs. `"certified"` (Level B) error bounds ($\hat{\eta} \pm U_{\text{numerical}}$) and classifies comparative claims into `SUPPORTED / REFUTED / INCONCLUSIVE / UNSUPPORTED` with automated disambiguation prescriptions |
+| **`v1.2.0`** | **LEG 52** | **`TensorPermittivityBatchAdapter`, Batched Differentiable FDTD & Checkpoint Optimizer** — Shared-topology multi-permittivity batching for forward evaluations and adjoint backpropagation (`FusedBatchTransposeYeeCUDA`), plus automated checkpoint budget optimization |
+| **`v2.0.0`** | **LEG 55** | **Solver-Agnostic `PhotonicExperimentIR` & SQLite WAL Experiment Engine** — Versioned intermediate representation (`TorchFDTD / RCWA / Meep / GDS` with explicit `UNSUPPORTED_BY_BACKEND` refusals), single-authority SQLite WAL lineage store with transactional outbox projection to `runs/ledger.jsonl`, and RO-Crate 1.1 export |
+| **`v2.0.0`** | **LEG 56** | **GDS/PDK Dual-Equivalence Delivery Loop** — SOI `LayerStack` & DRC verification plus independent FDTD physical equivalence verification on readback GDSII polygons |
+| **Benchmark** | **LEG 57** | **Isolated-Evaluator SciAgent Falsification Benchmark & Ablation Study** — 24 positive/negative control scientific tasks scored by an isolated ground-truth judge, reporting empirical False Verification Rate (with Clopper-Pearson 95% CI) and ablation against bare `Python + TorchFDTD` |
 
 ---
 

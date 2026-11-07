@@ -57,6 +57,7 @@ COMMIT=$(git rev-parse --short HEAD)
 INCLUDE=(
     LICENSE
     README.md
+    README_zh.md
     SKILL.md
     .mcp.json
     requirements.txt
@@ -208,7 +209,7 @@ if [ "$WITH_GIT" -eq 1 ]; then
     git -C "$DEST" add -A
     GIT_AUTHOR_NAME="torchfdtd-platform" GIT_AUTHOR_EMAIL="noreply@example.com" \
     GIT_COMMITTER_NAME="torchfdtd-platform" GIT_COMMITTER_EMAIL="noreply@example.com" \
-        git -C "$DEST" commit -q -m "torchfdtd-platform 1.0: one command, verifiable acceptance
+        git -C "$DEST" commit -q -m "AgentFDTD 1.0.1: one command, verifiable acceptance
 
 Public tree exported from the working repository at $COMMIT.
 The solver is a dependency (MIT-licensed torchfdtd), not bundled."
