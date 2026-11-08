@@ -722,32 +722,37 @@ def build_safe_evanescent_graded_axis(
     si_min: float,
     si_max: float,
     d_fine: float,
-    d_coarse: float,
-    evanescent_buffer_um: float = 0.85,
-    power_exponent: float = 3.0,
+    d_coarse: float | None = None,
+    evanescent_buffer_um: float = 0.50,
+    power_exponent: float = 2.0,
     max_stretch_ratio: float = 1.08,
+    beta_mid: float = 1.75,
+    s_mid_um: float = 1.50,
+    beta_max: float = 3.00,
 ) -> tuple[np.ndarray, dict[str, float]]:
     """Construct a 1D non-uniform FDTD grid node array with a strictly uniform
-    silicon + evanescent buffer core and a tangent-continuous (C^2 slow-start)
-    power-law expansion in the outer cladding.
+    silicon + evanescent buffer core and a d_fine-scaled non-linear power-law
+    expansion in the outer cladding.
 
     Engineering Safety Guarantees:
-      1. Uniform Fine Core + Evanescent Halo:
+      1. Uniform Fine Core + Evanescent Halo (0 <= s <= evanescent_buffer_um, default 0.50 um):
          Every point inside [si_min - evanescent_buffer_um, si_max + evanescent_buffer_um]
          is discretized with strictly uniform step ``d_fine`` (zero step-jump truncation
-         error where >99.99% of the guided/evanescent modal energy resides).
-      2. Zero-Slope Slow-Start Non-Linear Expansion:
-         Outside the uniform buffer, cell width grows following a smooth power-law
-         ``d(xi) = d_fine + (d_coarse - d_fine) * xi**p`` (default ``p = 3.0``),
-         so both d(delta)/dy = 0 and d^2(delta)/dy^2 = 0 at the buffer boundary:
-         expansion starts imperceptibly slowly near the buffer edge and accelerates
-         rapidly past ~1 um toward ``d_coarse``, while strictly clamping adjacent cell
-         ratios ``delta_{i+1} / delta_i <= max_stretch_ratio``.
+         error where >99.9% of the guided/evanescent modal energy resides).
+      2. d_fine-Scaled Non-Linear Expansion:
+         Outside the uniform buffer (distance ``s_out = s - evanescent_buffer_um``), cell
+         width grows as a smooth function of ``d_fine``:
+         ``d(s_out) = d_fine * min(beta_max, 1 + (beta_mid - 1) * (s_out / s_mid_um) ** p)``
+         (or toward ``d_coarse`` when explicitly provided), reaching ``~1.75 * d_fine`` at
+         ``s = 2.0 um`` from the silicon boundary and clamping at ``beta_max * d_fine``.
     """
     if domain_max <= domain_min:
         raise ValueError("domain_max must exceed domain_min")
-    if d_fine <= 0.0 or d_coarse < d_fine:
-        raise ValueError("Require 0 < d_fine <= d_coarse")
+    if d_fine <= 0.0:
+        raise ValueError("Require d_fine > 0")
+    d_max = float(d_coarse) if d_coarse is not None else float(beta_max) * float(d_fine)
+    if d_max < d_fine:
+        raise ValueError("Require d_fine <= d_coarse")
     p = max(1.5, float(power_exponent))
     r_max = max(1.01, float(max_stretch_ratio))
 
@@ -765,20 +770,37 @@ def build_safe_evanescent_graded_axis(
         span = abs(target_coord - start_coord)
         if span <= 1e-12:
             return []
-        pts: list[float] = []
+        if span <= df_exact * r_max:
+            return [float(target_coord)]
+        steps: list[float] = []
         pos = 0.0
         prev_step = df_exact
-        while pos < span - 1e-9:
-            xi = min(1.0, max(0.0, pos / span))
-            desired = df_exact + (d_coarse - df_exact) * (xi ** p)
-            step = min(desired, prev_step * r_max, float(d_coarse))
-            rem = span - pos
-            if rem <= step * 1.35:
-                pts.append(float(target_coord))
+        ref_len = max(0.15, min(float(s_mid_um), span))
+        while True:
+            pos_eval = pos + prev_step
+            if d_coarse is not None:
+                desired = d_max
+            else:
+                xi = max(0.0, pos_eval / ref_len)
+                scale = min(float(beta_max), 1.0 + (float(beta_mid) - 1.0) * (xi ** p))
+                desired = df_exact * scale
+            step = max(df_exact, min(desired, prev_step * r_max, d_max))
+            if pos + step > span + 1e-12:
                 break
+            steps.append(step)
             pos += step
             prev_step = step
-            pts.append(float(start_coord + direction * pos))
+        if not steps:
+            return [float(target_coord)]
+        rem = span - pos
+        if rem > 1e-12:
+            m = len(steps)
+            weights = np.arange(1, m + 1, dtype=np.float64)
+            weights /= weights.sum()
+            for i in range(m):
+                steps[i] += float(rem * weights[i])
+        pts = [float(start_coord + direction * s) for s in np.cumsum(steps)]
+        pts[-1] = float(target_coord)
         return pts
 
     left_pts = _march_side(fine_lo, domain_min, -1.0)[::-1]
@@ -802,4 +824,206 @@ def build_safe_evanescent_graded_axis(
         "max_adjacent_ratio": float(ratios.max()),
     }
     return nodes, meta
+
+
+def cell_area_and_normal_projection(
+    x0: float,
+    x1: float,
+    y0: float,
+    y1: float,
+    cell_edges: np.ndarray,
+    slab_edges: np.ndarray,
+) -> tuple[float, float, float]:
+    """Compute exact 2D area fill fraction f_core in [0, 1] and clipped-edge normal
+    structure tensor (P_xx, P_yy) = (<n_x^2>, <n_y^2>) inside cell [x0, x1] x [y0, y1].
+    """
+    ea_x, ea_y, eb_x, eb_y = cell_edges[:, 0], cell_edges[:, 1], cell_edges[:, 2], cell_edges[:, 3]
+    s_ea_x, s_ea_y, s_eb_x, s_eb_y = slab_edges[:, 0], slab_edges[:, 1], slab_edges[:, 2], slab_edges[:, 3]
+
+    cuts = [y0, y1]
+    for val in np.concatenate([ea_y, eb_y]):
+        if y0 + 1e-13 < val < y1 - 1e-13:
+            cuts.append(float(val))
+    dx_edge = eb_x - ea_x
+    nonzero_x = np.abs(dx_edge) > 1e-14
+    if np.any(nonzero_x):
+        for bound_x in (x0, x1):
+            t = (bound_x - ea_x[nonzero_x]) / dx_edge[nonzero_x]
+            valid = (t >= 0.0) & (t <= 1.0)
+            if np.any(valid):
+                y_cross = ea_y[nonzero_x][valid] + t[valid] * (eb_y[nonzero_x][valid] - ea_y[nonzero_x][valid])
+                for val in y_cross:
+                    if y0 + 1e-13 < val < y1 - 1e-13:
+                        cuts.append(float(val))
+
+    y_cuts = np.unique(np.round(cuts, decimals=13))
+    y_cuts[0] = y0
+    y_cuts[-1] = y1
+    dy_Len = y1 - y0
+    dx_Len = x1 - x0
+    total_area_frac = 0.0
+
+    s_dx = s_eb_x - s_ea_x
+    s_dy = s_eb_y - s_ea_y
+
+    for k in range(len(y_cuts) - 1):
+        ya, yb = y_cuts[k], y_cuts[k + 1]
+        half_dy = 0.5 * (yb - ya)
+        if half_dy <= 1e-14:
+            continue
+        mid_y = 0.5 * (ya + yb)
+        for q_node, q_weight in zip(_GL4_NODES, _GL4_WEIGHTS):
+            y_s = mid_y + half_dy * float(q_node)
+            cross = ((s_ea_y <= y_s) & (y_s < s_eb_y)) | ((s_eb_y <= y_s) & (y_s < s_ea_y))
+            f_line = 0.0
+            if np.any(cross):
+                xc = np.sort(s_ea_x[cross] + (y_s - s_ea_y[cross]) * s_dx[cross] / s_dy[cross])
+                for m in range(0, len(xc) - 1, 2):
+                    lo = max(x0, float(xc[m]))
+                    hi = min(x1, float(xc[m + 1]))
+                    if hi > lo:
+                        f_line += (hi - lo) / dx_Len
+            f_line = min(max(f_line, 0.0), 1.0)
+            total_area_frac += half_dy * float(q_weight) * f_line
+
+    f_core = min(max(total_area_frac / dy_Len, 0.0), 1.0)
+
+    w_nx2 = 0.0
+    w_ny2 = 0.0
+    w_tot = 0.0
+    for m in range(len(cell_edges)):
+        xa, ya, xb, yb = float(ea_x[m]), float(ea_y[m]), float(eb_x[m]), float(eb_y[m])
+        vx = xb - xa
+        vy = yb - ya
+        seg_len = math.hypot(vx, vy)
+        if seg_len <= 1e-14:
+            continue
+        t0, t1 = 0.0, 1.0
+        ok = True
+        for p, q in ((-vx, xa - x0), (vx, x1 - xa), (-vy, ya - y0), (vy, y1 - ya)):
+            if abs(p) <= 1e-15:
+                if q < -1e-14:
+                    ok = False
+                    break
+            else:
+                r = q / p
+                if p < 0.0:
+                    if r > t1:
+                        ok = False
+                        break
+                    if r > t0:
+                        t0 = r
+                else:
+                    if r < t0:
+                        ok = False
+                        break
+                    if r < t1:
+                        t1 = r
+        if ok and t1 > t0:
+            clip_len = (t1 - t0) * seg_len
+            nx2 = (vy * vy) / (seg_len * seg_len)
+            ny2 = (vx * vx) / (seg_len * seg_len)
+            w_nx2 += clip_len * nx2
+            w_ny2 += clip_len * ny2
+            w_tot += clip_len
+
+    if w_tot > 1e-14:
+        p_xx = w_nx2 / w_tot
+        p_yy = w_ny2 / w_tot
+    else:
+        p_xx, p_yy = 0.5, 0.5
+    return f_core, p_xx, p_yy
+
+
+def exact_rotational_conformal_2d_polygon(
+    ax_x: np.ndarray,
+    ax_y: np.ndarray,
+    dx_arr: np.ndarray,
+    dy_arr: np.ndarray,
+    poly_verts: np.ndarray | Sequence[np.ndarray],
+    eps_core: float,
+    eps_bg: float,
+    role: str,
+) -> np.ndarray:
+    """Rotationally invariant Farjadpour / Dey-Mittra Conformal Variant 0 2D polygon integral."""
+    nx, ny = len(ax_x), len(ax_y)
+    if isinstance(poly_verts, np.ndarray) and poly_verts.ndim == 2:
+        polys = [poly_verts]
+    else:
+        polys = [np.asarray(p, dtype=np.float64) for p in poly_verts]
+    items = [("poly", p, (), float(eps_core)) for p in polys]
+    all_edges = _extract_all_edges(items)
+    if len(all_edges) == 0:
+        return np.full((nx, ny), float(eps_bg), dtype=np.float64)
+
+    edge_xmin = np.minimum(all_edges[:, 0], all_edges[:, 2])
+    edge_xmax = np.maximum(all_edges[:, 0], all_edges[:, 2])
+    edge_ymin = np.minimum(all_edges[:, 1], all_edges[:, 3])
+    edge_ymax = np.maximum(all_edges[:, 1], all_edges[:, 3])
+
+    out = np.full((nx, ny), float(eps_bg), dtype=np.float64)
+    for p in polys:
+        px0, py0 = np.min(p, axis=0)
+        px1, py1 = np.max(p, axis=0)
+        ix0 = int(np.searchsorted(ax_x, px0, side="left"))
+        ix1 = int(np.searchsorted(ax_x, px1, side="right"))
+        iy0 = int(np.searchsorted(ax_y, py0, side="left"))
+        iy1 = int(np.searchsorted(ax_y, py1, side="right"))
+        if ix0 < ix1 and iy0 < iy1:
+            gx, gy = np.meshgrid(ax_x[ix0:ix1], ax_y[iy0:iy1], indexing="ij")
+            mask = polygon_contains(gx, gy, p)
+            out[ix0:ix1, iy0:iy1][mask] = float(eps_core)
+
+    near_mask = np.zeros((nx, ny), dtype=bool)
+    pad_x = float(np.max(dx_arr)) * 0.75
+    pad_y = float(np.max(dy_arr)) * 0.75
+    step_ds = max(0.005, 0.5 * min(float(np.min(dx_arr)), float(np.min(dy_arr))))
+    for m_e in range(len(all_edges)):
+        xa, ya, xb, yb = all_edges[m_e]
+        seg_len = math.hypot(xb - xa, yb - ya)
+        n_sub = max(1, min(400, int(math.ceil(seg_len / (8.0 * step_ds)))))
+        ts = np.linspace(0.0, 1.0, n_sub + 1)
+        xs = xa + ts * (xb - xa)
+        ys = ya + ts * (yb - ya)
+        for s_i in range(n_sub):
+            sx0, sx1 = min(xs[s_i], xs[s_i + 1]) - pad_x, max(xs[s_i], xs[s_i + 1]) + pad_x
+            sy0, sy1 = min(ys[s_i], ys[s_i + 1]) - pad_y, max(ys[s_i], ys[s_i + 1]) + pad_y
+            ix0 = int(np.searchsorted(ax_x, sx0, side="left"))
+            ix1 = int(np.searchsorted(ax_x, sx1, side="right"))
+            iy0 = int(np.searchsorted(ax_y, sy0, side="left"))
+            iy1 = int(np.searchsorted(ax_y, sy1, side="right"))
+            if ix0 < ix1 and iy0 < iy1:
+                near_mask[ix0:ix1, iy0:iy1] = True
+
+    cand_ix, cand_iy = np.nonzero(near_mask)
+    if len(cand_ix) == 0:
+        return out
+
+    cx = ax_x[cand_ix]
+    cy = ax_y[cand_iy]
+    x0_all = cx - 0.5 * dx_arr[cand_ix]
+    x1_all = cx + 0.5 * dx_arr[cand_ix]
+    y0_all = cy - 0.5 * dy_arr[cand_iy]
+    y1_all = cy + 0.5 * dy_arr[cand_iy]
+
+    for k in range(len(cand_ix)):
+        x0, x1 = float(x0_all[k]), float(x1_all[k])
+        y0, y1 = float(y0_all[k]), float(y1_all[k])
+        slab_hit = (edge_ymax >= y0 - 1e-12) & (edge_ymin <= y1 + 1e-12)
+        hit = slab_hit & (edge_xmax >= x0 - 1e-12) & (edge_xmin <= x1 + 1e-12)
+        if np.any(hit):
+            f_core, p_xx, p_yy = cell_area_and_normal_projection(
+                x0, x1, y0, y1, all_edges[hit], all_edges[slab_hit]
+            )
+            e_arith = f_core * float(eps_core) + (1.0 - f_core) * float(eps_bg)
+            if role == "w":
+                out[cand_ix[k], cand_iy[k]] = e_arith
+            else:
+                e_harm = 1.0 / (f_core / float(eps_core) + (1.0 - f_core) / float(eps_bg))
+                if role == "u":
+                    out[cand_ix[k], cand_iy[k]] = p_yy * e_arith + p_xx * e_harm
+                else:
+                    out[cand_ix[k], cand_iy[k]] = p_xx * e_arith + p_yy * e_harm
+    return out
+
 

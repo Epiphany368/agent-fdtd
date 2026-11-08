@@ -152,7 +152,7 @@ def prepare_aperture_modal_launch(project, permittivity, *, mode_index=0, num_mo
     if len(active) != 1:
         raise ValueError('Aperture modal launch requires exactly one enabled source.')
     s = active[0]
-    graded = r.mesh_type == 'graded' and allow_graded is True
+    graded = r.mesh_type in ('graded', 'explicit') and allow_graded is True
     if (r.mesh_type != 'uniform' and not graded) or r.complex_fields or r.material_sampling != 'yee':
         raise ValueError('Aperture modal launch requires a real uniform Yee-sampled region.')
     if r.dimension == '2d':
@@ -260,7 +260,7 @@ def prepare_aperture_modal_launch(project, permittivity, *, mode_index=0, num_mo
                 spatial.setflags(write=False)
                 terms.append((family+'xyz'[component], loc, waveform, spatial))
     signature_region = r
-    if graded and r.mesh_auto_refine:
+    if r.mesh_type == 'graded' and r.mesh_auto_refine:
         # Plane execution freezes these same refinements before replacing
         # field monitors with internal point observations.
         from .mesh import freeze_refinements

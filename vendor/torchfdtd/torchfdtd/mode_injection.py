@@ -291,6 +291,15 @@ class _ModalSimulation(DifferentiableSimulation):
             raise ValueError('Modal source storage exceeds the explicit host byte budget.')
         if epsilon.is_cuda:
             limit=cuda_budget_limit(str(epsilon.device),device_required+extra,self.options.gpu_budget_bytes)
+            if base.get('forward_only') and base.get('live_allocated_bytes',0)>0:
+                from .cuda_memory import cuda_mem_info
+                free,total=cuda_mem_info(str(epsilon.device))
+                live_alloc=base['live_allocated_bytes']
+                if free is not None and total is not None:
+                    cap=total if self.options.gpu_budget_bytes is None else self.options.gpu_budget_bytes
+                    combined_limit=int(min(cap,free+live_alloc)*.88)-live_alloc
+                    safe_free=max(0,free-200*1024**2)
+                    limit=max(limit,min(cap,combined_limit,safe_free))
             if device_required+extra>limit:raise ValueError('Modal source storage exceeds the GPU budget.')
         available=host_memory()['available_bytes']
         if available is not None and host_required>int(available*.8):raise ValueError('Modal source storage exceeds available host memory.')

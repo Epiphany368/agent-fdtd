@@ -194,7 +194,7 @@ def _resident_reservation(project, options, device, spectral=None, *, pole_count
         and not torch.is_grad_enabled() and device.type=='cuda'
         and not pole_count and not region.complex_fields
         and workspace_model=='fused_cuda_allocations'
-        and region.mesh_type in ('uniform', 'graded') and region.cuda_kernel=='fused'
+        and region.mesh_type in ('uniform', 'graded', 'explicit') and region.cuda_kernel=='fused'
         and not (boundary.pmc_lower or boundary.pmc_upper)
         and options.storage=='device' and options.checkpoint_transfers=='sync')
     forward_diagnostics={}
@@ -274,6 +274,15 @@ def _resident_reservation(project, options, device, spectral=None, *, pole_count
             raise ValueError('Disk checkpoint reservation exceeds available storage.')
     if device.type=='cuda':
         limit=cuda_budget_limit(device,admission_required,options.gpu_budget_bytes)
+        if forward_only and live_allocated>0:
+            from .cuda_memory import cuda_mem_info
+            torch.cuda.empty_cache()
+            free,total=cuda_mem_info(device)
+            if free is not None and total is not None:
+                cap=total if options.gpu_budget_bytes is None else options.gpu_budget_bytes
+                combined_limit=int(min(cap,free+live_allocated)*.88)-live_allocated
+                safe_free=max(0,free-200*1024**2)
+                limit=max(limit,min(cap,combined_limit,safe_free))
         if admission_required>limit:raise refusal('Adjoint workspace and checkpoint reservation exceed the GPU budget.',limit)
     return dict(memory_reservation_bytes=required,workspace_reservation_bytes=workspace,
         workspace_model=workspace_model,workspace_components_bytes=workspace_parts,

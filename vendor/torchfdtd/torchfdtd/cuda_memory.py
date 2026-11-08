@@ -64,6 +64,11 @@ def cuda_budget_limit(device,required,budget=None):
     """
     device=torch.device(device)
     if device.type!='cuda':raise ValueError('CUDA capacity requires a CUDA device.')
+    try:
+        import cupy as cp
+        cp.get_default_memory_pool().free_all_blocks()
+    except Exception:
+        pass
     free,total=cuda_mem_info(device)
     cap=total if budget is None else budget
     limit=min(cap,int(free*.8))

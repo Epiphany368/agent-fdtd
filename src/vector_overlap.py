@@ -231,22 +231,27 @@ def vector_mode_overlap_collocated(
     fields_fib: shape (..., points, 6), target fiber mode fields.
     weights: shape (points,) or broadcastable, surface integration weights.
     """
-    if normal == "z":
-        ex, ey = fields[..., 0], fields[..., 1]
-        hx, hy = fields[..., 3], fields[..., 4]
-        ex_f, ey_f = fields_fib[..., 0], fields_fib[..., 1]
-        hx_f, hy_f = fields_fib[..., 3], fields_fib[..., 4]
+    norm_str = normal.strip().lower()
+    sign = -1.0 if norm_str.startswith("-") else 1.0
+    axis_char = norm_str[-1] if norm_str else ""
+    if axis_char in ("x", "y", "z"):
+        w = "xyz".index(axis_char)
+        u, v = (w + 1) % 3, (w + 2) % 3
+        eu, ev = fields[..., u], fields[..., v]
+        hu, hv = fields[..., 3 + u], fields[..., 3 + v]
+        eu_f, ev_f = fields_fib[..., u], fields_fib[..., v]
+        hu_f, hv_f = fields_fib[..., 3 + u], fields_fib[..., 3 + v]
 
-        # Lorentz reciprocity integrand: (Et x H_fib^* - Ht x E_fib^*) . z_hat
-        integrand_rec = (
-            ex * torch.conj(hy_f)
-            - ey * torch.conj(hx_f)
-            - hx * torch.conj(ey_f)
-            + hy * torch.conj(ex_f)
+        # Lorentz reciprocity integrand: (Et x H_fib^* - Ht x E_fib^*) . n_hat
+        integrand_rec = sign * (
+            eu * torch.conj(hv_f)
+            - ev * torch.conj(hu_f)
+            - hu * torch.conj(ev_f)
+            + hv * torch.conj(eu_f)
         )
-        # Forward Poynting power integrand: (Et x Ht*) . z_hat
-        integrand_p_fib = 0.5 * torch.real(ex_f * torch.conj(hy_f) - ey_f * torch.conj(hx_f))
-        integrand_p_fwd = 0.5 * torch.real(ex * torch.conj(hy) - ey * torch.conj(hx))
+        # Forward Poynting power integrand: (Et x Ht*) . n_hat
+        integrand_p_fib = 0.5 * sign * torch.real(eu_f * torch.conj(hv_f) - ev_f * torch.conj(hu_f))
+        integrand_p_fwd = 0.5 * sign * torch.real(eu * torch.conj(hv) - ev * torch.conj(hu))
     else:
         raise ValueError(f"Unsupported normal: {normal}")
 
@@ -265,6 +270,7 @@ def vector_mode_overlap_collocated(
 
     metrics = {
         "i_rec": complex(i_rec.item()) if i_rec.numel() == 1 else i_rec,
+        "angle_rad": float(torch.angle(i_rec).item()) if i_rec.numel() == 1 else torch.angle(i_rec),
         "numerator": float(num.item()) if num.numel() == 1 else num,
         "denominator": float(denom.item()) if isinstance(denom, torch.Tensor) and denom.numel() == 1 else denom,
         "p_fib": float(p_fib_t.item()) if p_fib_t.numel() == 1 else p_fib_t,
@@ -272,6 +278,43 @@ def vector_mode_overlap_collocated(
         "eta": float(eta.item()) if eta.numel() == 1 else eta,
     }
     return eta, metrics
+
+
+def compute_evanescent_phase_cycles_and_angle(
+    complex_trace: Union[torch.Tensor, np.ndarray],
+    coords_um: Union[torch.Tensor, np.ndarray, None] = None,
+    wavelength_um: Union[float, None] = None,
+) -> Dict[str, Any]:
+    """Compute wrapped angle, unwrapped accumulated phase (rad), and total phase cycles
+    along a 1D propagation trace (either modal overlap amplitude a_fwd(x) or evanescent
+    field line E(x, y_evan, z0)).
+    """
+    arr = (
+        complex_trace.detach().cpu().numpy()
+        if isinstance(complex_trace, torch.Tensor)
+        else np.asarray(complex_trace, dtype=np.complex128)
+    )
+    wrapped_rad = np.angle(arr)
+    unwrapped_rad = np.unwrap(wrapped_rad)
+    delta_phi_rad = float(unwrapped_rad[-1] - unwrapped_rad[0]) if arr.size >= 2 else 0.0
+    phase_cycles = abs(delta_phi_rad) / (2.0 * math.pi)
+    out: Dict[str, Any] = {
+        "wrapped_angle_rad": wrapped_rad.tolist(),
+        "unwrapped_angle_rad": unwrapped_rad.tolist(),
+        "delta_phi_rad": delta_phi_rad,
+        "phase_cycles": float(phase_cycles),
+    }
+    if coords_um is not None and wavelength_um is not None and arr.size >= 2:
+        c_arr = (
+            coords_um.detach().cpu().numpy()
+            if isinstance(coords_um, torch.Tensor)
+            else np.asarray(coords_um, dtype=np.float64)
+        )
+        span_um = float(abs(c_arr[-1] - c_arr[0]))
+        if span_um > 1e-12:
+            out["n_eff_from_phase_slope"] = float(phase_cycles * float(wavelength_um) / span_um)
+    return out
+
 
 
 def gaussian_fiber_mode_2d(
